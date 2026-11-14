@@ -1,0 +1,10 @@
+{
+  "name": "Wonder Deck K-9",
+  "short_name": "Wonder Deck",
+  "description": "Nine keys. Each press opens a miniature world that bursts into life, then gently fades away.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "background_color": "#d9d5cd",
+  "theme_color": "#d9d5cd",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
