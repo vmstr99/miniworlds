@@ -27,9 +27,18 @@
 html,body{margin:0;height:100%;overflow:hidden;background:var(--room);color:var(--ink);font-family:var(--display);-webkit-font-smoothing:antialiased}
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 .vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(130% 100% at 50% 45%,transparent 55%,rgba(0,0,0,.28) 100%)}
-.tilt{position:fixed;left:0;right:0;pointer-events:none;z-index:1;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
-.tilt.top{top:0;height:13vh;-webkit-mask-image:linear-gradient(#000 10%,transparent);mask-image:linear-gradient(#000 10%,transparent)}
-.tilt.bottom{bottom:0;height:11vh;-webkit-mask-image:linear-gradient(transparent,#000 90%);mask-image:linear-gradient(transparent,#000 90%)}
+/* start-up loader: the nine keys light in turn until the first frame is on screen */
+#loader{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:var(--room);transition:opacity .6s ease,visibility .6s}
+#loader.done{opacity:0;visibility:hidden}
+.ld-grid{display:grid;grid-template-columns:repeat(3,22px);gap:8px;padding:14px;border-radius:16px;background:var(--shell);box-shadow:8px 8px 20px rgba(0,0,0,.18),-6px -6px 16px rgba(255,255,255,.12);transform:rotateX(50deg) rotateZ(45deg)}
+.ld-grid i{display:block;width:22px;height:22px;border-radius:6px;background:var(--lo);animation:ld 1.35s ease-in-out infinite}
+.ld-grid i:nth-child(1){animation-delay:0s}.ld-grid i:nth-child(2){animation-delay:.15s}.ld-grid i:nth-child(3){animation-delay:.3s}
+.ld-grid i:nth-child(6){animation-delay:.45s}.ld-grid i:nth-child(9){animation-delay:.6s}.ld-grid i:nth-child(8){animation-delay:.75s}
+.ld-grid i:nth-child(7){animation-delay:.9s}.ld-grid i:nth-child(4){animation-delay:1.05s}.ld-grid i:nth-child(5){animation-delay:1.2s;background:var(--amber)}
+@keyframes ld{0%,100%{background:var(--lo)}20%{background:var(--amber);box-shadow:0 0 12px var(--amber)}}
+#loader span{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);text-align:center;max-width:32ch}
+#loader.fail .ld-grid i{animation:none}
+@media (prefers-reduced-motion: reduce){.ld-grid i{animation-duration:3s}}
 #flash{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0;mix-blend-mode:screen}
 .hud{position:fixed;z-index:5;display:flex;gap:12px;align-items:center}
 .plate{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));background:var(--shell);border-radius:18px;padding:10px 16px 10px 12px;box-shadow:8px 8px 20px rgba(0,0,0,.18),-6px -6px 16px rgba(255,255,255,.12)}
@@ -52,7 +61,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--room);color:var(
 .plaque h2{margin:0;font-size:clamp(22px,3.4vw,32px);font-weight:700;letter-spacing:.02em;line-height:1.05;text-wrap:balance}
 .plaque p{margin:0;font-family:var(--mono);font-size:13px;line-height:1.55;color:var(--ink);opacity:.85;max-width:52ch;text-wrap:pretty}
 #readout{min-width:12ch;text-align:center}
-body.fx .tilt,body.fx .vignette{display:none}
+body.zoomed .plaque{left:max(16px,env(safe-area-inset-left));transform:translateY(14px);width:min(400px,calc(100vw - 32px));align-items:flex-start;text-align:left}
+body.zoomed .plaque.show{transform:none}
+body.zoomed .plaque h2{font-size:clamp(20px,2.6vw,27px)}
+body.fx .vignette{display:none}
 @media (max-width:640px){.plate p{display:none}#readout{display:none}.vfd small{display:none}.switch span:last-child{display:none}}
 @media (prefers-reduced-motion: reduce){.plaque{transition:opacity .4s}.switch .track::after{transition:none}}
 </style>
@@ -60,7 +72,7 @@ body.fx .tilt,body.fx .vignette{display:none}
 <body>
 <canvas id="gl" tabindex="0" aria-label="Wonder Deck: nine keys, each opens a miniature world. Press any key on your keyboard or click a pad."></canvas>
 <div class="vignette"></div>
-<div class="tilt top"></div><div class="tilt bottom"></div>
+<div id="loader" role="status" aria-live="polite"><div class="ld-grid" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span>Loading worlds</span></div>
 <div id="flash"></div>
 <header class="hud plate">
   <div class="stripes" aria-hidden="true"><i></i><i></i><i></i></div>
