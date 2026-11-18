@@ -134,7 +134,7 @@ export function initEngine(opts = {}) {
 
   /* audio: one context for everything; each world gets its own bus that is faded out and torn down when it leaves */
   const AUD = { ctx: null, master: null, muted: false };
-  AUD.get = () => { if (AUD.ctx) { if (AUD.ctx.state === 'suspended' && !AUD.muted) AUD.ctx.resume(); return AUD.ctx; } try { const C = window.AudioContext || window.webkitAudioContext, c = AUD.ctx = new C(); AUD.master = c.createGain(); AUD.master.gain.value = .9; AUD.master.connect(c.destination);
+  AUD.get = () => { if (AUD.ctx) { if (AUD.ctx.state === 'suspended' && !AUD.muted) AUD.ctx.resume(); return AUD.ctx; } try { const C = window.AudioContext || window.webkitAudioContext, c = AUD.ctx = new C(); AUD.master = c.createGain(); AUD.master.gain.value = .9; const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = .004; comp.release.value = .25; AUD.master.connect(comp); comp.connect(c.destination);
     const b = c.createBuffer(1, c.sampleRate * 3, c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AUD.noise = b; AUD.onStart.forEach(f => f(c)); return c; } catch (e) { return null; } };
   AUD.onStart = [];
 
@@ -148,7 +148,11 @@ export function initEngine(opts = {}) {
   const setLook = k => { if (!LOOK[k]) k = 'noon'; if (k === lookT && !snapLook) return; const L = LOOK[k]; needSky(L.sky);
     if (snapLook) { skyFrom = skyTo = L.sky; rotFrom = rotTo = L.rot || 0; skyK = 1; lookT = k; Object.assign(cur, { I: L.I, env: L.env, exp: L.exp, warm: L.warm || 0, skyI: L.skyI ?? 1, star: L.stars ? 1 : 0 }); cur.dir.set(...L.dir).normalize(); cur.col.set(L.col); snapLook = false; return; }
     if (skyK > .5) { skyFrom = skyTo; rotFrom = rotTo; } skyTo = L.sky; rotTo = L.rot || 0; skyK = 0; lookT = k; };
-  E.setLook = k => setLook(k); E.baseLook = baseLook;
+  E.setLook = k => setLook(k); E.baseLook = baseLook; E.looks = () => LOOK;
+  E.applyCam = k => { const P = E.camPlan; if (!P) return; const e = k * k * (3 - 2 * k); controls.target.lerpVectors(P.t0, P.t1, e);
+    const a = P.p0.clone().sub(P.t0), b = P.p1.clone().sub(P.t1), sa = new THREE.Spherical().setFromVector3(a), sb = new THREE.Spherical().setFromVector3(b); let dth = sb.theta - sa.theta; while (dth > Math.PI) dth -= TAU; while (dth < -Math.PI) dth += TAU;
+    const sp = new THREE.Spherical(lerp(sa.radius, sb.radius, e), lerp(sa.phi, sb.phi, e), sa.theta + dth * e); camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(sp));
+    if (k >= 1) { controls.minDistance = P.min; controls.maxDistance = P.max; E.camPlan = null; } };
   const disposeObj = root => root.traverse(o => { if (o.geometry) o.geometry.dispose(); const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     ms.forEach(m => { Object.values(m).forEach(v => { if (v && v.isTexture && !v.userData.shared) v.dispose(); }); if (m.uniforms) Object.values(m.uniforms).forEach(u => { const v = u && u.value; if (v && v.isTexture && !v.userData.shared && !Object.values(ENV).includes(v) && !Object.values(SKY).includes(v)) v.dispose(); }); m.dispose(); }); });
   E.unmount = () => { const w = E.world; if (!w) return; scene.remove(w.island); disposeObj(w.island); (w.disposers || []).forEach(f => { try { f(); } catch (e) {} }); E.world = null; };
@@ -159,8 +163,11 @@ export function initEngine(opts = {}) {
     { const D = LOOK.dusk; LOOK.dawn = Object.assign({}, D, { dir: [-D.dir[0], D.dir[1] * .85, -D.dir[2]], col: '#ffb898', I: D.I * .8, warm: (D.warm || 0) * .55, exp: (D.exp || 1) * 1.04, rot: .5 }); }
     Object.assign(sun.shadow.camera, SHADOW0); sun.shadow.camera.updateProjectionMatrix();
     const B = o.bloom || [.16, .5, 1.6]; bloom.strength = B[0]; bloom.radius = B[1]; bloom.threshold = B[2]; grade.uniforms.uSat.value = o.sat ?? 1.06;
-    const C = o.cam; controls.target.set(C.target[0], C.target[1] + .55, C.target[2]); controls.minDistance = C.min; controls.maxDistance = C.max;
-    { const d = (innerWidth / innerHeight < .8 ? C.dist * 1.3 : C.dist) * .9 * (1 + deckH / innerHeight * (innerWidth < innerHeight ? .45 : .55)); camera.position.set(Math.sin(C.pol) * Math.sin(C.az) * d + C.target[0], Math.cos(C.pol) * d + C.target[1] + .55, Math.sin(C.pol) * Math.cos(C.az) * d + C.target[2]); } controls.update();
+    const C = o.cam, tT = new THREE.Vector3(C.target[0], C.target[1] + .55, C.target[2]), d = (innerWidth / innerHeight < .8 ? C.dist * 1.3 : C.dist) * .9 * (1 + deckH / innerHeight * (innerWidth < innerHeight ? .45 : .55));
+    const tP = new THREE.Vector3(Math.sin(C.pol) * Math.sin(C.az) * d, Math.cos(C.pol) * d, Math.sin(C.pol) * Math.cos(C.az) * d).add(tT);
+    if (!E.camInit) { E.camInit = 1; controls.target.copy(tT); camera.position.copy(tP); controls.minDistance = C.min; controls.maxDistance = C.max; E.camPlan = null; }
+    else { E.camPlan = { t0: controls.target.clone(), p0: camera.position.clone(), t1: tT, p1: tP, min: C.min, max: C.max }; controls.minDistance = Math.min(controls.minDistance, C.min); controls.maxDistance = Math.max(controls.maxDistance, C.max, camera.position.distanceTo(controls.target)); }
+    controls.update();
     const ctx = { THREE, renderer, scene, camera, controls, composer, grade, bloom, manager, tex, loadRGBE, U, MOD, sun, skyU, SKY, ENV, cur, island, steps: [], MATS: [], GLOW: [], LIFE: [], disposers: [], clock: E.clock, api: null, o,
       setLook, baseLook, get look() { return lookT; }, shake(k) { E.shakeK = Math.max(E.shakeK || 0, k); }, flash(k = 1, c) { grade.uniforms.uFlash.value = REDUCE ? k * .3 : k; grade.uniforms.uFlashC.value.set(c || '#fff2dc'); }, glowMat(m, base = 1) { ctx.GLOW.push([m, base]); return m; }, life(obj, lv = 1) { ctx.LIFE.push([obj, lv]); return obj; } };
     Object.defineProperty(ctx, 'clock', { get: () => E.clock });
@@ -181,7 +188,7 @@ export function initEngine(opts = {}) {
     const dark = clamp(1 - cur.I / 2.2, 0, 1); U.uGlow.value = lerp(U.uGlow.value, GLOWL[MOD.glow] * (.4 + .6 * dark), f); w.GLOW.forEach(([m, b]) => { m.emissiveIntensity = b * U.uGlow.value; });
     w.LIFE.forEach(([o, lv]) => { o.visible = MOD.life >= lv; });
     skyU.uT.value = E.clock; if (SKY[skyTo]) skyK = Math.min(1, skyK + dt / 3); skyU.tA.value = SKY[skyFrom] || SKY[skyTo]; skyU.tB.value = SKY[skyTo] || SKY[skyFrom]; skyU.uMix.value = sm(skyK); skyU.uRotA.value = rotFrom; skyU.uRotB.value = rotTo; skyU.uI.value = cur.skyI; skyU.uStar.value = cur.star;
-    const envT = ENV[skyK > .5 ? skyTo : skyFrom] || ENV[skyTo] || ENV[skyFrom]; if (envT && scene.environment !== envT) scene.environment = envT; if (skyK >= 1) { skyFrom = skyTo; rotFrom = rotTo; }
+    const envT = ENV[skyTo] || ENV[skyFrom]; // switch the environment at once (it is set before a world rises), never mid-fade if (envT && scene.environment !== envT) scene.environment = envT; if (skyK >= 1) { skyFrom = skyTo; rotFrom = rotTo; }
     sun.position.copy(cur.dir).multiplyScalar(30); sun.color.copy(cur.col); sun.intensity = cur.I; renderer.toneMappingExposure = cur.exp; grade.uniforms.uWarm.value = cur.warm; grade.uniforms.uStorm.value = cl / 3; U.uSun.value = clamp(cur.I / (w.o.sunRef || 3), .14, 1);
     w.MATS.forEach(m => { m.envMapIntensity = cur.env * (m.userData.env ?? 1); }); skyU.uFlash.value = Math.max(0, skyU.uFlash.value - dt * 7); grade.uniforms.uFlash.value = Math.max(0, grade.uniforms.uFlash.value - dt * 1.6);
     if (spin) { spin.t += dt; const k = sm(spin.t / .9), a = spin.da * k - spin.a0; spin.a0 = spin.da * k; tmp.copy(camera.position).sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), a); camera.position.copy(controls.target).add(tmp); if (spin.t >= .9) { spin = null; if (spinQ) { const d = Math.sign(spinQ); spinQ -= d; spin = { t: 0, a0: 0, da: d * Math.PI / 2 }; } } }
@@ -189,7 +196,7 @@ export function initEngine(opts = {}) {
   E.step = step;
   E.waitReady = () => new Promise(res => { const t0 = performance.now(); const chk = () => { const w = E.world, L = w && LOOK[lookT]; if ((w && SKY[L.sky] && pending === 0) || performance.now() - t0 > 20000) res(); else setTimeout(chk, 60); }; chk(); }); // never hang on one failed request
   const tick = now => { requestAnimationFrame(tick); const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now; if (!E.ready) return;
-    if (raw < .25 && !document.hidden) { perfT += raw; if (++perfN >= 90) { const ms = perfT / perfN; if (ms > 1 / 38 && PR > PRMIN) { PR = Math.max(PRMIN, PR - .25); renderer.setPixelRatio(PR); composer.setPixelRatio(PR); composer.setSize(innerWidth, innerHeight); } perfN = perfT = 0; } }
+    if (E.busy || E.clock < (E.calmAt || 0)) { perfN = perfT = 0; } else if (raw < .25 && !document.hidden) { perfT += raw; if (++perfN >= 90) { const ms = perfT / perfN; if (ms > 1 / 38 && PR > PRMIN) { PR = Math.max(PRMIN, PR - .25); renderer.setPixelRatio(PR); composer.setPixelRatio(PR); composer.setSize(innerWidth, innerHeight); } perfN = perfT = 0; } }
     window.__frames = frames; step(dt); controls.autoRotateSpeed = .2; controls.autoRotate = !REDUCE && !Q.get('still') && !controls.userData.touched && !spin; controls.update(); const sk = REDUCE ? 0 : (E.shakeK || 0); E.shakeK = sk * Math.exp(-dt * 2.6); let sv = null; if (sk > .002) { sv = camera.position.clone(); const d = camera.position.distanceTo(controls.target) * .012 * sk; camera.position.x += rnd(-d, d); camera.position.y += rnd(-d, d) * .7; camera.position.z += rnd(-d, d); camera.updateMatrixWorld(); }
     composer.render(); if (sv) { camera.position.copy(sv); camera.updateMatrixWorld(); }
     if (E.overlays.length) { renderer.autoClear = false; E.overlays.forEach(f => f(dt)); renderer.autoClear = true; }
@@ -235,30 +242,34 @@ export function makeWater(ctx, hf, o) {
   const { S, H5, hAt } = hf, n = 256, d = new Uint8Array(n * n * 4);
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i + .5) / n * S - H5, z = (j + .5) / n * S - H5, dep = clamp((o.level - (o.depthAt ? o.depthAt(x, z) : hAt(x, z))) / (o.norm ?? 3), 0, 1), k = ((n - 1 - j) * n + i) * 4; d[k] = d[k + 1] = d[k + 2] = dep * 255; d[k + 3] = 255; }
   const depthTex = new THREE.DataTexture(d, n, n); depthTex.magFilter = depthTex.minFilter = THREE.LinearFilter; depthTex.needsUpdate = true;
+  const tr = new Uint8Array(n * n * 4); for (let k = 0; k < n * n; k++) { const t = 1 - .8 * sm((d[k * 4] / 255 - .3) / .6); tr[k * 4] = tr[k * 4 + 1] = tr[k * 4 + 2] = t * 255; tr[k * 4 + 3] = 255; }
+  const transTex = new THREE.DataTexture(tr, n, n); transTex.magFilter = transTex.minFilter = THREE.LinearFilter; transTex.needsUpdate = true;
   const WU = { uTime: ctx.U.uTime, uWave: { value: o.wave ?? .03 }, uWind: ctx.U.uWind, uSun: ctx.U.uSun, uCloud: ctx.U.uCloud, uDeep: { value: new THREE.Color(o.deep) }, uShal: { value: new THREE.Color(o.shallow) }, uFoam: { value: 1 }, uSunV: { value: new THREE.Vector3(0, 1, 0) }, uGlint: { value: o.glint ?? 1 } };
   const WAVE = `float wav(vec2 p, float t){ float uW = uWave * (.65 + .35 * uWind); float w = uW * (.55 * sin(p.x * 1.1 - t * 1.2) + .3 * sin((p.x * .6 + p.y * .8) * 1.9 - t * 1.6) + .15 * sin((p.x - p.y) * 3.3 - t * 2.4));
   float ex = smoothstep(${(H5 * .74).toFixed(2)}, ${H5.toFixed(2)}, abs(p.x)), ez = smoothstep(${(H5 * .74).toFixed(2)}, ${H5.toFixed(2)}, abs(p.y)); w += (uW * .8 + .012) * (ex * sin(p.y * 1.6 - t * 1.9 + sign(p.x)) + ez * sin(p.x * 1.4 + t * 1.7 + sign(p.y) * 2.)); return w; }\n`;
-  const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: .04, transmission: 1, ior: 1.333, thickness: o.norm ?? 3, thicknessMap: depthTex, attenuationColor: new THREE.Color(o.att), attenuationDistance: o.attDist ?? 1.6, normalMap: ctx.tex('water_nor.jpg', false), normalScale: new THREE.Vector2(.3, .3) });
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: .04, transmission: 1, ior: 1.333, thickness: o.norm ?? 3, thicknessMap: depthTex, transmissionMap: transTex, attenuationColor: new THREE.Color(o.att), attenuationDistance: o.attDist ?? 1.6, normalMap: ctx.tex('water_nor.jpg', false), normalScale: new THREE.Vector2(.3, .3) });
   ctx.MATS.push(mat);
   mat.onBeforeCompile = sh => { Object.assign(sh.uniforms, WU);
     sh.vertexShader = 'uniform float uTime, uWave, uWind;\n' + WAVE + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpw = modelMatrix * vec4(position, 1.); transformed.y += wav(wpw.xz, uTime);');
     sh.fragmentShader = 'uniform float uTime, uWave, uWind, uSun, uFoam, uCloud, uGlint; uniform vec3 uDeep, uShal, uSunV;\n' + GLSL_NOISE + sh.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n { float dd = texture2D(thicknessMap, vThicknessMapUv).g; diffuseColor.rgb *= mix(vec3(1.), mix(uDeep * .55, uDeep * .16, smoothstep(.6, 1., dd)), smoothstep(.3, .85, dd)); }')
       .replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', `vec2 nuv = vNormalMapUv * 6.; float tt = uTime * .028 * uWind;
 	vec3 mapN = normalize((texture2D(normalMap, nuv + vec2(tt, tt * .6)).xyz * 2. - 1.) + (texture2D(normalMap, nuv * 1.9 + vec2(-tt * 1.3, tt * .8)).xyz * 2. - 1.) + (texture2D(normalMap, nuv * .37 + vec2(tt * .4, -tt * .5)).xyz * 2. - 1.) * .6);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 	{ float th = texture2D(thicknessMap, vThicknessMapUv).g * ${(o.norm ?? 3).toFixed(2)}, cs = cloudShade(vThicknessMapUv * ${S.toFixed(1)}, uTime, uCloud);
-	  totalEmissiveRadiance += mix(uShal, uDeep, smoothstep(.4, 2.2, th)) * (1. - exp(-th * 1.1)) * mix(1.05, 1.5, smoothstep(2., 4.5, th)) * uSun * cs;
+	  float dn = texture2D(thicknessMap, vThicknessMapUv).g, vv = .75 + .5 * vn(vThicknessMapUv * 7. + uTime * .015) * vn(vThicknessMapUv * 3.1 - uTime * .01);
+	  totalEmissiveRadiance += mix(uShal, uDeep, smoothstep(.4, 2.2, th)) * (1. - exp(-th * 1.1)) * mix(1., .5, smoothstep(.7, 1., dn)) * mix(1., vv, smoothstep(.4, .8, dn)) * uSun * cs;
 	  float fo = smoothstep(.07, .0, th) * smoothstep(.25, .75, vn(vThicknessMapUv * 260. + uTime * .3) * .6 + vn(vThicknessMapUv * 90. - uTime * .2) * .4) * uFoam; totalEmissiveRadiance += vec3(.9) * fo * uSun * cs;
 	  vec3 rv = reflect(-normalize(vViewPosition), normal); float gl = pow(max(dot(rv, uSunV), 0.), 1400.) * step(.82, vn(vThicknessMapUv * 900. + uTime * 2.3)); totalEmissiveRadiance += vec3(1., .96, .88) * gl * 60. * uSun * uGlint * cs; }`); };
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(S, S, LO ? 120 : 220, LO ? 120 : 220).rotateX(-Math.PI / 2), mat); mesh.position.y = o.level; mesh.receiveShadow = true; ctx.island.add(mesh);
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .45, metalness: 0, transparent: true, depthWrite: false, }); wallMat.userData.env = .12; ctx.MATS.push(wallMat);
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .45, metalness: 0, transparent: true, depthWrite: false, }); wallMat.userData.env = .3; ctx.MATS.push(wallMat);
   wallMat.onBeforeCompile = sh => { Object.assign(sh.uniforms, WU);
     sh.vertexShader = 'uniform float uTime, uWave, uWind; varying float vDp; varying vec3 vWp;\n' + WAVE + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvDp = uv.y; vWp = position; if (uv.y < .001) { vec4 wpw = modelMatrix * vec4(position, 1.); transformed.y += wav(wpw.xz, uTime); }');
     sh.fragmentShader = 'uniform vec3 uDeep, uShal; uniform float uSun, uTime; varying float vDp; varying vec3 vWp;\n' + GLSL_NOISE + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n float f = 1. - exp(-vDp * ' + (o.wallK ?? 2.6).toFixed(2) + '), ab = smoothstep(.45, 1., vDp); diffuseColor.rgb = mix(mix(uShal * .9, uDeep * .6, f), vec3(.002, .006, .014), ab); diffuseColor.a = mix(.14, .86, f) + ab * .1;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n float f = 1. - exp(-vDp * ' + (o.wallK ?? 2.6).toFixed(2) + '), ab = smoothstep(.45, 1., vDp); diffuseColor.rgb = mix(mix(uShal * .95, uDeep * .6, f), vec3(.002, .006, .014), ab); diffuseColor.a = mix(.5, .9, f) + ab * .08 + smoothstep(.03, .0, vDp) * .3;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
  { float al = vWp.x + vWp.z, shaft = smoothstep(.55, .9, vn(vec2((al + vDp * 2.) * 1.6 + uTime * .05, 1.7))) * smoothstep(.5, .85, vn(vec2((al + vDp * 2.) * 3.7 - uTime * .04, 4.2)) + .25);
-   totalEmissiveRadiance += mix(mix(uShal * .45, uDeep * .5, f), vec3(0.), ab) * .6 * uSun + uShal * shaft * (1. - f) * .9 * uSun + vec3(.7, .95, .95) * smoothstep(.025, .0, vDp) * .3 * uSun; }`); };
+   totalEmissiveRadiance += mix(mix(uShal * .45, uDeep * .5, f), vec3(0.), ab) * .6 * uSun + uShal * shaft * (1. - f) * .9 * uSun + vec3(.7, .95, .95) * smoothstep(.035, .0, vDp) * .55 * uSun + uShal * smoothstep(.25, .0, vDp) * .35 * uSun; }`); };
   ctx.steps.push(() => { WU.uSunV.value.copy(ctx.cur.dir).transformDirection(ctx.camera.matrixWorldInverse); });
   return { mesh, mat, WU, wallMat, depthTex };
 }
@@ -321,6 +332,18 @@ export function makeAudio() {
   AUD.onStart.push(start);
   w.disposers.push(() => { const i = AUD.onStart.indexOf(start); if (i >= 0) AUD.onStart.splice(i, 1); if (!A.ctx) return; const t = A.ctx.currentTime; A.out.gain.setTargetAtTime(0, t, .12); setTimeout(() => { A.srcs.forEach(s => { try { s.stop(); } catch (e) {} }); A.out.disconnect(); }, 700); });
   A.burst = (dur, ff, vol, type = 'lowpass', when = 0) => { const c = A.get(); if (!c) return; const t = c.currentTime + when, s = c.createBufferSource(); s.buffer = A.noise; const f = c.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(ff, t); f.frequency.exponentialRampToValueAtTime(Math.max(40, ff * .2), t + dur); const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(f); f.connect(g); g.connect(A.out); s.start(t, Math.random()); s.stop(t + dur + .1); };
+  // thunder: a crack, then rolling low rumbles stacked with a pitch-falling sub, soft-clipped for weight
+  const clip = c => { if (A.shaper) return A.shaper; const w = c.createWaveShaper(), k = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; k[i] = Math.tanh(x * 2.2); } w.curve = k; w.connect(A.out); return A.shaper = w; };
+  const nz = (c, t, dur, type, f0, f1, q, vol, att = .01, out) => { const s = c.createBufferSource(); s.buffer = A.noise; const f = c.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur); f.Q.value = q; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(f); f.connect(g); g.connect(out); s.start(t, Math.random() * 1.5); s.stop(t + dur + .1); };
+  const sub = (c, t, f0, f1, dur, vol, out) => { const o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .03); g.gain.exponentialRampToValueAtTime(.0001, t + dur); o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + .05); };
+  A.thunder = (g = 1, when = 0) => { const c = A.get(); if (!c) return; const t = c.currentTime + when, o = clip(c);
+    nz(c, t, .14, 'bandpass', 3200, 900, .7, .55 * g, .003, A.out); nz(c, t + .02, .5, 'highpass', 1800, 600, .5, .2 * g, .005, A.out);
+    for (let k = 0; k < 4; k++) nz(c, t + .05 + k * rnd(.12, .45), rnd(3.5, 6), 'lowpass', rnd(140, 220), 32, .8, rnd(.35, .55) * g, rnd(.04, .2), o);
+    sub(c, t + .03, 52, 21, 3.2, .7 * g, o); };
+  A.boom = (g = 1, when = 0) => { const c = A.get(); if (!c) return; const t = c.currentTime + when, o = clip(c);
+    nz(c, t, .1, 'highpass', 6000, 2500, .5, .8 * g, .002, A.out); nz(c, t, .45, 'bandpass', 2400, 400, .6, .6 * g, .004, A.out);
+    sub(c, t, 46, 16, 4.5, 1.0 * g, o); sub(c, t + .02, 92, 30, 1.6, .45 * g, o); nz(c, t, 9, 'lowpass', 260, 28, .9, .9 * g, .02, o); nz(c, t + .1, 12, 'lowpass', 120, 25, .7, .6 * g, .4, o);
+    A.thunder(.7 * g, when + .55); A.thunder(.5 * g, when + 1.6); };
   A.tone = (f0, f1, dur, vol, when = 0, type = 'sine') => { const c = A.get(); if (!c) return; const t = c.currentTime + when, o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * .8); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .05); g.gain.exponentialRampToValueAtTime(.0001, t + dur); o.connect(g); g.connect(A.out); o.start(t); o.stop(t + dur + .05); };
   return A;
 }

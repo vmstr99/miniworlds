@@ -57,65 +57,82 @@ export function build() {
   const water = makeWater(ctx, hf, { level: SEA, att: '#2a4aa8', attDist: 1.1, deep: '#081a5a', shallow: '#1a5a8e', glint: .9, norm: NORM, wallK: 4.2, wave: .02 });
   island.add(new THREE.Mesh(walls.water, water.wallMat));
 
-  /* buildings: every facade shares one material whose shader draws window grids, lit at night window by window;
-     the power wave and the blackout drive it from two uniforms */
-  const CU = { uPow: { value: 1 }, uWaveR: { value: 0 }, uWaveOn: { value: 0 }, uWO: { value: new THREE.Vector2(BE[0], BE[1]) } };
+  /* buildings: every facade shares one material whose shader gives each building its own window personality (grid, lit
+     share, colour temperature, ribbon strips, slots, curtain wall or punched windows, floors burning late, TV flicker,
+     shopfronts, floodlit bases and crowns); the power wave, the blackout and the show drive it from uniforms */
+  const CU = { uPow: { value: 1 }, uWaveR: { value: 0 }, uWaveOn: { value: 0 }, uWO: { value: new THREE.Vector2(BE[0], BE[1]) }, uPump: { value: 0 }, uHue: { value: new THREE.Color('#ff3a9a') } };
   const facade = (m, glass) => { m.onBeforeCompile = sh => { Object.assign(sh.uniforms, U, CU);
-      sh.vertexShader = 'attribute vec2 bi; varying vec2 vBi; varying vec3 vWPb; varying vec3 vWNb;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBi = bi; vWPb = (modelMatrix * vec4(transformed, 1.)).xyz; vWNb = normalize(mat3(modelMatrix) * objectNormal);');
-      sh.fragmentShader = 'uniform float uTime, uGlow, uPow, uWaveR, uWaveOn; uniform vec2 uWO; varying vec2 vBi; varying vec3 vWPb; varying vec3 vWNb; float wWin; vec3 wE;\n' + GLSL_NOISE + sh.fragmentShader
+      sh.vertexShader = 'attribute vec3 bi; varying vec3 vBi; varying vec3 vWPb; varying vec3 vWNb;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBi = bi; vWPb = (modelMatrix * vec4(transformed, 1.)).xyz; vWNb = normalize(mat3(modelMatrix) * objectNormal);');
+      sh.fragmentShader = 'uniform float uTime, uGlow, uPow, uWaveR, uWaveOn, uPump; uniform vec3 uHue; uniform vec2 uWO; varying vec3 vBi; varying vec3 vWPb; varying vec3 vWNb; float wWin; vec3 wE;\n' + GLSL_NOISE + sh.fragmentShader
         .replace('#include <map_fragment>', `#include <map_fragment>
-  { vec3 P = vWPb, Nb = normalize(vWNb); float side = 1. - step(.55, abs(Nb.y)); float band = step(100., vBi.x);
-    float u = dot(P.xz, normalize(vec2(-Nb.z, Nb.x) + 1e-5)) * ${glass ? '34.' : '26.'}, v = P.y * ${glass ? '24.' : '18.'};
-    vec2 cl = floor(vec2(u, v)), fr = fract(vec2(u, v));
-    float win = side * mix(step(.14, fr.x) * step(fr.x, .86) * step(.24, fr.y) * step(fr.y, .84), step(.3, fr.y) * step(fr.y, .78), band) * step(.07, P.y - vBi.y);
-    float seed = mod(vBi.x, 100.), on = step(.56, hh(vec2(band > .5 ? floor(u * .2) : cl.x, cl.y) + seed * 37.)), tint = hh(cl + seed * 11. + 3.);
-    vec3 lc = mix(vec3(1., .7, .4), vec3(.72, .86, 1.), step(.66, tint)) * (.55 + .7 * hh(cl + 9.)) * (.9 + .1 * sin(uTime * (1. + tint * 3.) + tint * 40.));
-    float wave = mix(1., 1. - smoothstep(uWaveR - .5, uWaveR, length(P.xz - uWO)), uWaveOn) * uPow;
-    wWin = win; wE = lc * win * on * uGlow * ${glass ? '.9' : '1.15'} * wave;
+  { vec3 P = vWPb, Nb = normalize(vWNb); float side = 1. - step(.55, abs(Nb.y)); float seed = mod(vBi.x, 100.), band = step(100., vBi.x), base = vBi.y, H = vBi.z - vBi.y, hy = P.y - base;
+    float s1 = hh(vec2(seed, 1.7)), s2 = hh(vec2(seed, 2.3)), s3 = hh(vec2(seed, 3.1)), s4 = hh(vec2(seed, 4.9)), s5 = hh(vec2(seed, 5.3)), s6 = hh(vec2(seed, 6.1));
+    float style = band > .5 ? 1. : floor(s4 * 4.);
+    float cols = ${glass ? 'mix(26., 46., s1)' : 'mix(15., 32., s1)'}, rows = mix(13., 24., s2);
+    float u = dot(P.xz, normalize(vec2(-Nb.z, Nb.x) + 1e-5)) * cols, v = hy * rows; vec2 cl = floor(vec2(u, v)), fr = fract(vec2(u, v));
+    float win = style < .5 ? step(.18, fr.x) * step(fr.x, .82) * step(.26, fr.y) * step(fr.y, .82) : style < 1.5 ? step(.3, fr.y) * step(fr.y, .8) : style < 2.5 ? step(.36, fr.x) * step(fr.x, .64) * step(.12, fr.y) * step(fr.y, .9) : step(.05, fr.x) * step(fr.x, .95) * step(.08, fr.y) * step(fr.y, .95);
+    win *= side * step(.075, hy) * step(hy, H - .03);
+    vec2 wid = vec2(style > .5 && style < 1.5 ? floor(u * .25) : cl.x, cl.y);
+    float on = step(1. - mix(.1, .78, s3), hh(wid + seed * 37.)); on = max(on, step(.94, hh(vec2(cl.y, seed * 3.1))));
+    vec3 cw = s5 < .3 ? vec3(1., .58, .26) : s5 < .6 ? vec3(1., .78, .5) : s5 < .85 ? vec3(.78, .88, 1.) : vec3(.8, 1., .9);
+    float wv = hh(wid + 9.1); vec3 lc = mix(cw, vec3(1., .66, .36), step(.82, wv) * .7) * (.4 + .85 * hh(wid + 2.3));
+    float tv = step(.985, hh(wid + 5.)); lc = mix(lc, vec3(.35, .55, 1.) * (.6 + .4 * sin(uTime * 13. + wv * 50.) * sin(uTime * 3.7 + wv * 20.)), tv);
+    float wave = mix(1., 1. - smoothstep(uWaveR - .5, uWaveR, length(P.xz - uWO)), uWaveOn) * uPow, pump = 1. + uPump * (.7 + .3 * sin(P.y * 7. - uTime * 9.));
+    wWin = win; wE = lc * win * on * uGlow * ${glass ? '1.0' : '1.25'} * wave * pump;
+    wE += vec3(1., .76, .48) * side * step(.012, hy) * step(hy, .055) * step(.4, s6) * uGlow * 1.3 * wave * (.6 + .4 * hh(vec2(floor(u * .3), seed)));
+    vec3 wash = s2 < .45 ? vec3(1., .7, .38) : s2 < .75 ? vec3(.5, .7, 1.) : uHue;
+    wE += wash * side * (1. - win) * (exp(-clamp(hy, 0., 9.) * 4.5) * step(.7, s6) * .4 + smoothstep(H - .2, H, hy) * step(s4, .32) * .55) * step(0., hy) * uGlow * wave * (1. + uPump * .8);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.05, .065, .08), win * ${glass ? '.4' : '.85'}); }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, .12, wWin);`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += wE;'); };
-    m.customProgramCacheKey = () => 'facade' + glass; return m; };
+    m.customProgramCacheKey = () => 'facade2' + glass; return m; };
   const facM = facade(new THREE.MeshStandardMaterial({ map: T.plaster, normalMap: T.plasterN, vertexColors: true, roughness: .75 }), false), glassM = facade(new THREE.MeshPhysicalMaterial({ color: '#7f97ab', metalness: .85, roughness: .07, clearcoat: .6, vertexColors: true }), true);
   glassM.userData.env = 1.4; MATS.push(facM, glassM);
   const goldM = new THREE.MeshStandardMaterial({ color: '#d6a650', metalness: 1, roughness: .28 }); MATS.push(goldM);
-  const crownM = ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#30261a', emissive: '#ffd890', emissiveIntensity: 2 }), 2), beaconM = new THREE.MeshStandardMaterial({ color: '#300', emissive: '#ff2a1a', emissiveIntensity: 0 }); MATS.push(crownM, beaconM);
-  const NEON = ['#ff2e88', '#2ef2ff', '#ffb02e', '#9a5cff'].map(c => ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#111', emissive: c, emissiveIntensity: 3 }), 3)); MATS.push(...NEON);
-  const parts = { fac: [], glass: [], gold: [], crown: [], beacon: [], neon: [[], [], [], []] }, tall = [];
-  const tag = (g, seed, base, col) => { const n = g.attributes.position.count, bi = new Float32Array(n * 2), c = new Float32Array(n * 3), cc = new THREE.Color(col); for (let i = 0; i < n; i++) { bi[i * 2] = seed; bi[i * 2 + 1] = base; c[i * 3] = cc.r; c[i * 3 + 1] = cc.g; c[i * 3 + 2] = cc.b; }
-    g.setAttribute('bi', new THREE.BufferAttribute(bi, 2)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g.index ? g.toNonIndexed() : g; };
+  const crownM = ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#30261a', emissive: '#ffd890', emissiveIntensity: 2 }), 2.2), beaconM = new THREE.MeshStandardMaterial({ color: '#300', emissive: '#ff2a1a', emissiveIntensity: 0 }), strobeM = new THREE.MeshStandardMaterial({ color: '#222', emissive: '#ffffff', emissiveIntensity: 0 }); MATS.push(crownM, beaconM, strobeM);
+  const NEONC = ['#ff2e88', '#2ef2ff', '#ffb02e', '#9a5cff', '#3aff7a', '#ff4a2a'], NEON = NEONC.map(c => ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#111', emissive: c, emissiveIntensity: 3 }), 3)); MATS.push(...NEON);
+  const parts = { fac: [], glass: [], gold: [], crown: [], beacon: [], strobe: [], neon: NEONC.map(() => []) }, tall = [];
+  const tag = (g, seed, base, col) => { g.computeBoundingBox(); const top = g.boundingBox.max.y, n = g.attributes.position.count, bi = new Float32Array(n * 3), c = new Float32Array(n * 3), cc = new THREE.Color(col);
+    for (let i = 0; i < n; i++) { bi[i * 3] = seed; bi[i * 3 + 1] = base; bi[i * 3 + 2] = top; c[i * 3] = cc.r; c[i * 3 + 1] = cc.g; c[i * 3 + 2] = cc.b; }
+    g.setAttribute('bi', new THREE.BufferAttribute(bi, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g.index ? g.toNonIndexed() : g; };
   const put = (list, g, x, y, z, ry = 0, seed = 0, base = 0, col = '#ffffff') => { g.rotateY(ry); g.translate(x, y, z); list.push(list === parts.fac || list === parts.glass ? tag(g, seed, base, col) : (g.index ? g.toNonIndexed() : g)); return g; };
   const BX = (w, h, d) => new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), CY = (r, h, s = 24, r2 = r) => new THREE.CylinderGeometry(r, r2, h, s).translate(0, h / 2, 0);
-  const FACC = ['#e8e0d0', '#d8d0c4', '#c8c0b4', '#ece4d8', '#bfb6a8', '#d9c9b0'], GLC = ['#8fa6b8', '#7d96a8', '#9ab0c0', '#6f8a9e', '#a0a8b0'];
+  const FACC = ['#e8e0d0', '#d8d0c4', '#c8c0b4', '#ece4d8', '#bfb6a8', '#d9c9b0', '#a8a49c', '#e4d2bc'], GLC = ['#8fa6b8', '#7d96a8', '#9ab0c0', '#6f8a9e', '#a0a8b0', '#7a9a98'];
+  const neonOn = (x, y, z, w, h, d) => parts.neon[Math.floor(R() * NEONC.length)].push(BX(w, h, d).translate(x, y, z).toNonIndexed());
+  const beacon = (x, y, z, strobe) => (strobe ? parts.strobe : parts.beacon).push(new THREE.SphereGeometry(strobe ? .016 : .013, 8, 6).translate(x, y, z).toNonIndexed());
   let seed = 1;
-  const building = (x, z, back) => { const y = hAt(x, z) - .02, s = ++seed, fw = rnd(.26, .36), fd = rnd(.26, .36), ry = 0, Hm = .35 + back * back * 3.6 + R() * (.4 + back * 1.6), kind = R();
-    if (Hm > 2.4 && kind < .22) { // art deco: setbacks, gold bands, a lit stepped crown
-      let yy = y, w = fw * 1.15, d = fd * 1.15; const tiers = [.5, .22, .14]; tiers.forEach((f, i) => { const hh = Hm * f; put(parts.fac, BX(w, hh, d), x, yy, z, ry, s, y, pick(FACC)); put(parts.gold, BX(w + .012, .018, d + .012), x, yy + hh - .018, z); yy += hh; w *= .78; d *= .78; });
-      for (let k = 0; k < 4; k++) { put(parts.crown, BX(w * (1 - k * .2), .06, d * (1 - k * .2)), x, yy + k * .06, z); } put(parts.gold, CY(.008, .35, 6), x, yy + .24, z); tall.push([x, yy + .55, z]); parts.beacon.push(new THREE.SphereGeometry(.014, 8, 6).translate(x, yy + .6, z).toNonIndexed()); return; }
-    if (Hm > 2.0 && kind < .36) { // twisting glass tower
-      const n = 26, hh = Hm / n; for (let k = 0; k < n; k++) put(parts.glass, BX(fw, hh * .96, fd), x, y + k * hh, z, k * .055, s, y, pick(GLC)); tall.push([x, y + Hm, z]); return; }
-    if (kind < .5) { // round or octagonal glass
-      const seg = R() < .5 ? 28 : 8, r = Math.min(fw, fd) * .62; put(parts.glass, CY(r, Hm, seg), x, y, z, 0, s, y, pick(GLC)); put(parts.fac, CY(r * 1.05, .04, seg), x, y + Hm, z, 0, s, y + 9, '#cfc8bc');
-      if (R() < .4) put(parts.glass, new THREE.ConeGeometry(r, r * 1.2, seg).translate(0, r * .6, 0), x, y + Hm + .04, z, 0, s, y + 99, pick(GLC)); else { put(parts.fac, CY(.03, .12, 8), x + r * .4, y + Hm, z, 0, s, y + 9, '#888'); }
-      if (Hm > 1.6) tall.push([x, y + Hm, z]); return; }
-    if (kind < .72 && Hm > 1.0) { // setback slab with a mast and beacon
-      put(parts.fac, BX(fw, Hm * .7, fd), x, y, z, ry, s, y, pick(FACC)); put(parts.fac, BX(fw * .7, Hm * .3, fd * .7), x, y + Hm * .7, z, ry, s, y, pick(FACC));
-      if (R() < .55) { put(parts.gold, CY(.006, .45, 5, .012), x, y + Hm, z); parts.beacon.push(new THREE.SphereGeometry(.013, 8, 6).translate(x, y + Hm + .46, z).toNonIndexed()); }
-      if (R() < .5) put(parts.glass, new THREE.ConeGeometry(fw * .5, fw * .5, 4).rotateY(Math.PI / 4).translate(0, fw * .25, 0), x, y + Hm, z, 0, s, y + 99, pick(GLC));
-      if (R() < .35) { const ni = Math.floor(R() * 4), side = R() < .5 ? 1 : -1; parts.neon[ni].push(BX(.012, Math.min(.6, Hm * .4), .05).translate(x + side * (fw / 2 + .008), y + .1 + R() * Hm * .3, z).toNonIndexed()); }
-      if (Hm > 1.6) tall.push([x, y + Hm, z]); return; }
-    // low and mid blocks with rooftop tanks; neon on some
-    put(R() < .3 ? parts.glass : parts.fac, BX(fw, Hm, fd), x, y, z, ry, s, y, R() < .3 ? pick(GLC) : pick(FACC));
-    if (R() < .5) put(parts.fac, CY(.035, .06, 10), x + rnd(-.06, .06), y + Hm, z + rnd(-.06, .06), 0, s, y + 9, '#8a8478');
-    if (R() < .3) { const ni = Math.floor(R() * 4); parts.neon[ni].push(BX(fw * .8, .03, .012).translate(x, y + Hm * rnd(.3, .8), z + fd / 2 + .008).toNonIndexed()); } };
-  for (let gx = -11; gx <= 11; gx++) for (let gz = -11; gz <= 11; gz++) { const x = gx * GRID, z = gz * GRID; if (!CITY(x, z)) continue; const back = sm((-(x + z) / 1.414 + 1.4) / 6.2);
-    if (R() < .1 && back < .6) continue; building(x + rnd(-.03, .03), z + rnd(-.03, .03), back); if (back > .55 && R() < .4) building(x + rnd(-.08, .08), z + rnd(-.08, .08), back * .7); }
+  // landmarks: each one a different silhouette, massed toward the hill
+  const hero = (x, z, kind, H) => { const y = hAt(x, z) - .02, s = ++seed, w = rnd(.34, .4), dd = rnd(.34, .4);
+    if (kind === 'deco') { let yy = y, ww = w * 1.1, d2 = dd * 1.1; [.42, .22, .16, .1].forEach(f => { const hh = H * f; put(parts.fac, BX(ww, hh, d2), x, yy, z, 0, s, y, pick(['#e8dcc6', '#d8c8ac'])); put(parts.gold, BX(ww + .014, .02, d2 + .014), x, yy + hh - .02, z); yy += hh; ww *= .8; d2 *= .8; });
+      for (let k = 0; k < 4; k++) put(parts.crown, BX(ww * (1 - k * .22), .055, d2 * (1 - k * .22)), x, yy + k * .055, z); put(parts.gold, CY(.006, .5, 6, .014), x, yy + .22, z); beacon(x, yy + .74, z); tall.push([x, yy + .7, z]); return; }
+    if (kind === 'twist') { const n = 34, hh = H / n; for (let k = 0; k < n; k++) put(parts.glass, BX(w, hh * .94, dd), x, y + k * hh, z, k * .052, s, y, pick(GLC)); put(parts.gold, CY(.005, .3, 6, .01), x, y + H, z); beacon(x, y + H + .31, z, true); tall.push([x, y + H, z]); return; }
+    if (kind === 'round') { const r = w * .58; put(parts.glass, CY(r, H, 32), x, y, z, 0, s, y, pick(GLC)); put(parts.gold, CY(r * 1.06, .03, 32), x, y + H * .5, z); put(parts.glass, new THREE.ConeGeometry(r, r * 1.6, 32).translate(0, r * .8, 0), x, y + H, z, 0, s, y + 99, pick(GLC)); put(parts.gold, CY(.004, .4, 6, .008), x, y + H + r * 1.5, z); beacon(x, y + H + r * 1.5 + .41, z); tall.push([x, y + H, z]); return; }
+    if (kind === 'mast') { put(parts.fac, BX(w, H * .62, dd), x, y, z, 0, s, y, pick(FACC)); put(parts.glass, BX(w * .72, H * .38, dd * .72), x, y + H * .62, z, 0, s + 50, y + H * .62, pick(GLC)); put(parts.gold, CY(.006, .6, 5, .014), x, y + H, z); beacon(x, y + H + .61, z); tall.push([x, y + H, z]); return; }
+    if (kind === 'octa') { const r = w * .6; put(parts.glass, CY(r, H, 8), x, y, z, Math.PI / 8, s, y, pick(GLC)); put(parts.fac, CY(r * 1.04, .04, 8), x, y + H, z, Math.PI / 8, s, y + 99, '#cfc8bc'); put(parts.fac, CY(r * .7, .015, 24), x, y + H + .04, z, 0, s, y + 99, '#55585c'); for (let k = 0; k < 8; k++) beacon(x + Math.cos(k / 8 * TAU) * r * .7, y + H + .06, z + Math.sin(k / 8 * TAU) * r * .7); tall.push([x, y + H, z]); return; }
+    if (kind === 'pyramid') { put(parts.glass, BX(w, H, dd), x, y, z, 0, s, y, pick(GLC)); put(parts.crown, new THREE.ConeGeometry(w * .72, w * .9, 4).rotateY(Math.PI / 4).translate(0, w * .45, 0), x, y + H, z); tall.push([x, y + H, z]); return; }
+    // spire: a slender stepped shaft and a long needle
+    let yy = y, ww = w * .9; [.5, .25, .15].forEach((f, i) => { const hh = H * f; put(i === 1 ? parts.glass : parts.fac, BX(ww, hh, ww), x, yy, z, Math.PI / 4, s + i * 7, yy, i === 1 ? pick(GLC) : pick(FACC)); yy += hh; ww *= .72; });
+    put(parts.gold, CY(.004, .9, 6, .02), x, yy, z); beacon(x, yy + .9, z, true); tall.push([x, yy + .4, z]); };
+  // everything else: lower blocks with varied massing so the landmarks read
+  const filler = (x, z, back) => { const y = hAt(x, z) - .02, s = ++seed, fw = rnd(.22, .34), fd = rnd(.22, .34), Hm = .22 + back * .95 + R() * (.25 + back * .5), k = R();
+    if (k < .25) { put(parts.fac, BX(fw, Hm * .45, fd), x, y, z, 0, s, y, pick(FACC)); put(parts.fac, BX(fw * .55, Hm, fd * .55), x - fw * .2, y, z - fd * .2, 0, s + 3, y, pick(FACC)); }
+    else if (k < .45) { put(parts.fac, BX(fw, Hm, fd * .45), x, y, z - fd * .27, 0, s, y, pick(FACC)); put(parts.fac, BX(fw * .45, Hm * .75, fd), x - fw * .27, y, z, 0, s + 5, y, pick(FACC)); }
+    else if (k < .6) put(parts.glass, BX(fw, Hm, fd), x, y, z, 0, s, y, pick(GLC));
+    else put(parts.fac, BX(fw, Hm, fd), x, y, z, 0, s, y, pick(FACC));
+    if (R() < .45) put(parts.fac, CY(.03, .055, 10), x + rnd(-.05, .05), y + Hm, z + rnd(-.05, .05), 0, s, y + 99, '#8a8478');
+    if (R() < .3) put(parts.fac, BX(.06, .03, .04), x + rnd(-.06, .06), y + Hm, z + rnd(-.06, .06), 0, s, y + 99, '#9a968e');
+    if (R() < .28) { const sd = R() < .5; neonOn(sd ? x + fw / 2 + .008 : x, y + Hm * rnd(.25, .7), sd ? z : z + fd / 2 + .008, sd ? .012 : fw * .7, sd ? Math.min(.4, Hm * .4) : .028, sd ? .05 : .012); } };
+  { const lots = []; for (let gx = -11; gx <= 11; gx++) for (let gz = -11; gz <= 11; gz++) { const x = gx * GRID, z = gz * GRID; if (CITY(x, z)) lots.push([x, z, sm((-(x + z) / 1.414 + 1.4) / 6.2)]); }
+    lots.sort((a, b) => b[2] - a[2]); const heroes = [], KINDS = ['deco', 'twist', 'round', 'spire', 'mast', 'octa', 'pyramid', 'deco', 'round'];
+    for (const L of lots) { if (heroes.length >= KINDS.length) break; if (heroes.some(h => Math.hypot(h[0] - L[0], h[1] - L[1]) < 1.15)) continue; heroes.push(L); }
+    heroes.forEach((L, i) => hero(L[0], L[1], KINDS[i], 1.9 + L[2] * 2.0 + R() * .5));
+    lots.forEach(L => { if (heroes.includes(L) || heroes.some(h => Math.hypot(h[0] - L[0], h[1] - L[1]) < .5)) return; if (R() < .44) return; filler(L[0] + rnd(-.03, .03), L[1] + rnd(-.03, .03), L[2]); }); }
   // streamline hotels along the promenade
-  for (let k = 0; k < 9; k++) { const a = -3.2 + k * .62, x = a * .7071 + .0, z = -a * .7071, sd = shoreD(x, z); let px = x, pz = z; for (let q = 0; q < 20 && shoreD(px, pz) > -.42; q++) { px -= .05; pz -= .05; } if (!CITY(px, pz) && riverD(px, pz) < .6) continue;
+  for (let k = 0; k < 9; k++) { const a = -3.2 + k * .62, x = a * .7071, z = -a * .7071; let px = x, pz = z; for (let q = 0; q < 20 && shoreD(px, pz) > -.42; q++) { px -= .05; pz -= .05; } if (!CITY(px, pz) && riverD(px, pz) < .6) continue; if (k % 3 === 2) continue;
     const y = hAt(px, pz) - .02, H = rnd(.45, .85), w = rnd(.42, .6), s = 100 + (++seed); put(parts.fac, BX(w, H, .2), px, y, pz, -Math.PI / 4, s, y, '#f2ece2'); [-1, 1].forEach(e => put(parts.fac, CY(.1, H, 18), px + Math.cos(Math.PI / 4) * e * w / 2, y, pz + Math.sin(Math.PI / 4) * e * w / 2, 0, s, y, '#f2ece2'));
-    parts.neon[k % 4].push(BX(w * .6, .035, .012).rotateY(-Math.PI / 4).translate(px + .07, y + H + .02, pz + .07).toNonIndexed()); }
+    parts.neon[k % NEONC.length].push(BX(w * .6, .035, .012).rotateY(-Math.PI / 4).translate(px + .07, y + H + .02, pz + .07).toNonIndexed()); }
   const mergeTo = (list, m, shadow = true) => { if (!list.length) return null; const o = new THREE.Mesh(mergeGeometries(list), m); o.castShadow = shadow; o.receiveShadow = true; island.add(o); return o; };
-  mergeTo(parts.fac, facM); mergeTo(parts.glass, glassM); mergeTo(parts.gold, goldM); mergeTo(parts.crown, crownM, false); mergeTo(parts.beacon, beaconM, false); parts.neon.forEach((l, i) => mergeTo(l, NEON[i], false));
+  mergeTo(parts.fac, facM); mergeTo(parts.glass, glassM); mergeTo(parts.gold, goldM); mergeTo(parts.crown, crownM, false); mergeTo(parts.beacon, beaconM, false); mergeTo(parts.strobe, strobeM, false); parts.neon.forEach((l, i) => mergeTo(l, NEON[i], false));
 
   /* the suspension bridge over the river, with its lights strung along the cables */
   const steel = new THREE.MeshStandardMaterial({ color: '#b8bcc0', metalness: .6, roughness: .4 }); MATS.push(steel);
@@ -185,48 +202,85 @@ export function build() {
     for (let k = -8; k <= 4; k++) { const z = k * GRID + GRID / 2; const pts = []; for (let x = -4.8; x <= 4.8; x += .2) if (CITY(x, z) || CITY(x, z - .2)) pts.push(x); if (pts.length > 6) lanes.push({ a: new THREE.Vector3(pts[0], 0, z), b: new THREE.Vector3(pts[pts.length - 1], 0, z), w: .03, road: 1 }); } }
   const CARS = Array.from({ length: NC }, () => ({ l: pick(lanes), f: R(), sp: rnd(.05, .12), dir: R() < .5 ? 1 : -1 })); CARS.forEach(c => { if (R() < .45) c.l = lanes[0]; });
 
-  /* the show */
+  /* the show: a blackout, the power wave out of the colossus's ring, then a hard techno set at 128 bpm. Sixteen beats of
+     build (kick, hats, a filtered bassline opening up, beams waking), eight beats of snare roll and riser with the city pulled
+     down and the beams converging on the ring, then the drop: impact, every beam snaps open, colours change on the beat,
+     windows and neon pump with the kick, and the last bars strobe. Audio is scheduled a little ahead, step by step. */
   const beamM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { uA: { value: 0 } },
     vertexShader: 'varying float vV; varying vec3 vN; varying vec3 vVw; void main(){ vV = uv.y; vec4 mv = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vVw = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
     fragmentShader: 'uniform float uA; uniform vec3 diffuse; varying float vV; varying vec3 vN; varying vec3 vVw; void main(){ float e = pow(abs(dot(normalize(vN), vVw)), 1.5); gl_FragColor = vec4(diffuse * uA * e * pow(clamp(1. - vV, 0., 1.), 1.6) * .55, 1.); }' });
-  const beamG = new THREE.CylinderGeometry(.02, .5, 10, 24, 1, true).translate(0, -5, 0).rotateX(Math.PI); // apex at the origin, opening along +y
+  const beamG = new THREE.CylinderGeometry(.02, .45, 10, 24, 1, true).translate(0, -5, 0).rotateX(Math.PI);
   { const uv = beamG.attributes.uv, p = beamG.attributes.position; for (let i = 0; i < uv.count; i++) uv.setY(i, clamp(p.getY(i) / 10, 0, 1)); }
-  const origins = tall.slice().sort((a, b) => b[1] - a[1]).slice(0, 10); origins.push([BE[0], hAt(BE[0], BE[1]) + 2.9, BE[1]]);
-  const COLS = ['#ffffff', '#bfe0ff', '#ffd8a0', '#ff4aa0', '#4af0ff', '#b080ff'];
-  const beams = origins.map(([x, y, z], i) => { const m = beamM.clone(); m.uniforms = { uA: { value: 0 }, diffuse: { value: new THREE.Color(COLS[i % 3]) } }; const b = new THREE.Mesh(beamG, m); b.position.set(x, y, z); b.visible = false; b.renderOrder = 8; island.add(b); return { b, m, ph: rnd(TAU), i }; });
+  const origins = tall.slice().sort((a, b) => b[1] - a[1]).slice(0, 9); origins.push([BE[0], hAt(BE[0], BE[1]) + 2.9, BE[1]]);
+  const COLS = ['#ffffff', '#bfe0ff', '#ff3aa0', '#3af0ff', '#b070ff', '#ffb040', '#40ff90'];
+  const beams = origins.map(([x, y, z], i) => { const m = beamM.clone(); m.uniforms = { uA: { value: 0 }, diffuse: { value: new THREE.Color(COLS[i % 2]) } }; const b = new THREE.Mesh(beamG, m); b.position.set(x, y, z); b.visible = false; b.renderOrder = 8; island.add(b); return { b, m, i, rx: 0, rz: 0 }; });
   const AU = makeAudio(); AU.onStart = A => { A.surf = A.loop('lowpass', 420, .7, .08); A.hum = A.loop('lowpass', 120, 1.2, .02); A.city = A.loop('bandpass', 700, .4, .02); };
-  let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {} }; }, get evOn() { return !!ev; } };
-  const PENTA = [261.6, 293.7, 329.6, 392, 440, 523.3, 587.3, 659.3, 784];
-  const eu = new THREE.Euler(), qq = new THREE.Quaternion();
+  const BPM = 128, BEAT = 60 / BPM, T0 = 1.8, BUILD = T0 + 16 * BEAT, ROLL = BUILD + 8 * BEAT, END = ROLL + 32 * BEAT, OUT = END + 3.2;
+  // the synth
+  const SY = (() => { let c, o, t0; const nz = (t, dur, type, f, vol, q = .8, f1) => { const s = c.createBufferSource(); s.buffer = AU.noise; const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t + dur); fl.Q.value = q; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .002); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(fl); fl.connect(g); g.connect(o); s.start(t, Math.random() * 2); s.stop(t + dur + .02); };
+    const osc = (t, type, f0, f1, dur, vol, cut, q = 1, att = .004) => { const os = c.createOscillator(); os.type = type; os.frequency.setValueAtTime(f0, t); if (f1 !== f0) os.frequency.exponentialRampToValueAtTime(f1, t + dur * .9); const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); let n = os; if (cut) { const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut * 2.4, t); fl.frequency.exponentialRampToValueAtTime(cut, t + dur * .7); fl.Q.value = q; os.connect(fl); n = fl; } n.connect(g); g.connect(o); os.start(t); os.stop(t + dur + .03); };
+    return { start(now) { c = AU.ctx; o = AU.out; t0 = c.currentTime - now; }, at: e => t0 + e, ok: () => !!c,
+      kick(t, g = 1) { osc(t, 'sine', 165, 40, .42, .95 * g); nz(t, .02, 'highpass', 2500, .22 * g); },
+      hat(t, open, g = 1) { nz(t, open ? .22 : .045, 'highpass', 7600, (open ? .11 : .08) * g); },
+      clap(t) { for (let k = 0; k < 3; k++) nz(t + k * .011, .1 + k * .03, 'bandpass', 1350, .32, 1.1); },
+      snare(t, g) { nz(t, .11, 'bandpass', 1900, .32 * g, .9); osc(t, 'triangle', 210, 160, .08, .1 * g); },
+      bass(t, f, dur, cut, g = .42) { osc(t, 'sawtooth', f, f, dur, g, cut, 9); osc(t, 'square', f / 2, f / 2, dur, g * .5, cut * .6, 4); },
+      stab(t, root, cut) { [0, 3, 7, 10].forEach(sv => [-8, 8].forEach(dt2 => { const os = c.createOscillator(); os.type = 'sawtooth'; os.frequency.value = root * Math.pow(2, sv / 12); os.detune.value = dt2; const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut, t); fl.frequency.exponentialRampToValueAtTime(320, t + .3); fl.Q.value = 5; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.045, t + .005); g.gain.exponentialRampToValueAtTime(.0001, t + .32); os.connect(fl); fl.connect(g); g.connect(o); os.start(t); os.stop(t + .35); })); },
+      riser(t, dur) { const s = c.createBufferSource(); s.buffer = AU.noise; s.loop = true; const fl = c.createBiquadFilter(); fl.type = 'bandpass'; fl.Q.value = 2.5; fl.frequency.setValueAtTime(350, t); fl.frequency.exponentialRampToValueAtTime(8000, t + dur); const g = c.createGain(); g.gain.setValueAtTime(.01, t); g.gain.exponentialRampToValueAtTime(.38, t + dur); g.gain.setValueAtTime(.0001, t + dur + .01); s.connect(fl); fl.connect(g); g.connect(o); s.start(t); s.stop(t + dur + .05);
+        const os = c.createOscillator(); os.type = 'sawtooth'; os.frequency.setValueAtTime(110, t); os.frequency.exponentialRampToValueAtTime(1100, t + dur); const g2 = c.createGain(); g2.gain.setValueAtTime(.002, t); g2.gain.exponentialRampToValueAtTime(.07, t + dur); g2.gain.setValueAtTime(.0001, t + dur + .01); os.connect(g2); g2.connect(o); os.start(t); os.stop(t + dur + .05); },
+      impact(t, g = 1) { osc(t, 'sine', 72, 22, 2.6, 1.0 * g, 0, 1, .003); nz(t, 2.6, 'lowpass', 1200, .7 * g, .7, 50); nz(t, 3, 'highpass', 5200, .22 * g, .5); nz(t, .08, 'highpass', 3000, .5 * g); },
+      down(t) { osc(t, 'sawtooth', 320, 28, 1.1, .22, 900, 2); nz(t + .9, .4, 'lowpass', 180, .5, .8, 40); } }; })();
+  const ROOTS = [55, 43.65, 49, 41.2], score = [];
+  { const B = (b, base) => base + b * BEAT; score.push([.6, t => SY.down(t)], [T0, t => SY.impact(t, .55)]);
+    for (let b = 0; b < 16; b++) { score.push([B(b, T0), t => SY.kick(t, .7 + b / 40)]); if (b >= 4) score.push([B(b + .5, T0), t => SY.hat(t, false)]); if (b >= 8) score.push([B(b + .75, T0), t => SY.hat(t, false, .6)]);
+      for (let q = 1; q < 4; q++) score.push([B(b + q / 4, T0), t => SY.bass(t, q === 2 ? 65.4 : 55, BEAT / 4 * .9, 160 + b * 38)]); }
+    for (let b = 0; b < 8; b++) { if (b < 6) { score.push([B(b, BUILD), t => SY.kick(t, 1)]); for (let q = 1; q < 4; q++) score.push([B(b + q / 4, BUILD), t => SY.bass(t, 55, BEAT / 4 * .9, 800 + b * 260)]); }
+      const sub = b < 4 ? 2 : b < 6 ? 4 : 8; for (let q = 0; q < sub; q++) score.push([B(b + q / sub, BUILD), t => SY.snare(t, .3 + (b * sub + q) / (8 * sub) * .9)]); }
+    score.push([BUILD, t => SY.riser(t, 8 * BEAT)]);
+    score.push([ROLL, t => SY.impact(t, 1)]);
+    for (let b = 0; b < 32; b++) { const r = ROOTS[Math.floor(b / 8) % 4]; score.push([B(b, ROLL), t => SY.kick(t, 1.05)]); if (b % 2) score.push([B(b, ROLL), t => SY.clap(t)]); score.push([B(b + .5, ROLL), t => SY.hat(t, true)]);
+      for (let q = 0; q < 4; q++) { if (q !== 2) score.push([B(b + q / 4 + .25, ROLL), t => SY.hat(t, false, .5)]); if (q) score.push([B(b + q / 4, ROLL), t => SY.bass(t, q === 3 ? r * 2 : r, BEAT / 4 * .85, 1400)]); }
+      if (b % 2 === 0) score.push([B(b + .5, ROLL), t => SY.stab(t, r * 4, 2600)]); if (b % 8 === 0 && b) score.push([B(b, ROLL), t => SY.impact(t, .35)]); }
+    score.push([END, t => SY.impact(t, .9)]); score.sort((a, b) => a[0] - b[0]); }
+  let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {}, si: 0 }; if (AU.ctx) SY.start(0); }, get evOn() { return !!ev; } };
+  const NEONP = [(t) => .9 + .1 * Math.sin(t * 120), (t, dt) => R() < dt * 1.5 ? .1 : 1, t => .55 + .45 * Math.sin(t * 2.2), t => Math.sin(t * 3.4) > -.2 ? 1 : .08, (t) => (Math.sin(t * 37) > .3 && Math.sin(t * 5.1) > -.6) ? 1 : .25, () => 1];
   ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360));
-    beaconM.emissiveIntensity = (Math.sin(t * 3.1) > .6 ? 7 : .2) * CU.uPow.value * (.4 + U.uGlow.value * .5);
-    ringL.intensity = ringM.emissiveIntensity * 1.6 * CU.uPow.value;
-    NEON.forEach((m, i) => { m.emissiveIntensity *= CU.uPow.value * (R() < dt * .6 ? .15 : 1); });
+    const P = CU.uPow.value, G = .4 + U.uGlow.value * .5;
+    beaconM.emissiveIntensity = (Math.sin(t * 3.1) > .6 ? 7 : .2) * P * G; strobeM.emissiveIntensity = ((t % 1.6) < .05 || ((t % 1.6) > .18 && (t % 1.6) < .23) ? 14 : 0) * P * G;
+    ringL.intensity = ringM.emissiveIntensity * 1.6 * P;
+    NEON.forEach((m, i) => { m.emissiveIntensity *= P * NEONP[i](t + i, dt) * (1 + CU.uPump.value * 1.2); });
     cruisers.forEach(c => { c.a += c.sp * dt; c.o.position.set(2.85 + Math.cos(c.a) * c.r, .01, 3.0 + Math.sin(c.a) * c.r * .6); c.o.rotation.set(Math.sin(t * 1.3 + c.r) * .03, -c.a - Math.sign(c.sp) * Math.PI / 2, 0); });
     // traffic
     const want = [0, 60, 140, 220][ctx.MOD.life] * (LO ? .55 : 1); let n = 0;
     for (let i = 0; i < Math.min(NC, want); i++) { const c = CARS[i], L = c.l; c.f += c.sp * dt * c.dir / Math.max(.5, L.a.distanceTo(L.b)) * 3; if (c.f > 1) c.f -= 1; if (c.f < 0) c.f += 1;
       const p = L.a.clone().lerp(L.b, c.f), dx = L.b.x - L.a.x, dz = L.b.z - L.a.z, ln = Math.hypot(dx, dz), ox = -dz / ln * L.w * c.dir, oz = dx / ln * L.w * c.dir; const y = L.road ? hAt(p.x, p.z) + .015 : p.y;
-      cp[n * 3] = p.x + ox; cp[n * 3 + 1] = y; cp[n * 3 + 2] = p.z + oz; const head = c.dir > 0 ? 1 : 0; cc[n * 3] = head ? 1 : 1; cc[n * 3 + 1] = head ? .9 : .12; cc[n * 3 + 2] = head ? .7 : .06; n++; }
-    cg.setDrawRange(0, n); cg.attributes.position.needsUpdate = cg.attributes.color.needsUpdate = true; cm.uniforms.uG.value = (.35 + U.uGlow.value * .6) * CU.uPow.value;
-    if (ev) { ev.t += dt; const e = ev.t, f = ev.f;
-      // blackout: a flicker, then the whole shore goes dark
-      if (e < .9) CU.uPow.value = e < .5 ? (R() < .5 ? 1 : .2) : Math.max(0, CU.uPow.value - dt * 6);
-      if (e > .5 && !f.out) { f.out = 1; AU.burst(.6, 300, .35); AU.tone(110, 40, 1.2, .2); if (AU.ctx) AU.city.gain.setTargetAtTime(0, AU.ctx.currentTime, .2); }
-      // the power wave: the colossus's ring flares, then light rolls out across the city
-      if (e > 2.2 && !f.wave) { f.wave = 1; CU.uWaveOn.value = 1; CU.uWaveR.value = 0; CU.uPow.value = 1; ctx.flash(.12, '#ffe2a0'); AU.tone(80, 320, 3.2, .18); for (let k = 0; k < 6; k++) AU.tone(PENTA[k] * 2, PENTA[k] * 2, 1.2, .05, .3 + k * .25, 'triangle'); }
-      if (f.wave) { CU.uWaveR.value += dt * 3.2; ringM.emissiveIntensity = Math.max(ringM.emissiveIntensity, 30 * Math.exp(-(e - 2.2) * 1.5)); if (CU.uWaveR.value > 16) CU.uWaveOn.value = 0; }
-      // searchlights: fan sweeps, a crossing over the colossus, colour strobes
-      const show = e > 4.2 && e < 22, k = sm((e - 4.2) / 1) * (1 - sm((e - 20.5) / 1.5));
-      beams.forEach(B => { B.b.visible = k > .01; if (!B.b.visible) return; let rx, rz; const s = B.i * .7 + B.ph;
-        if (e < 9) { rx = Math.sin(t * .8 + s) * .5; rz = Math.cos(t * .6 + s * 1.3) * .5; }
-        else if (e < 13) { const tx = BE[0], tz = BE[1], ty = 7.5, dx = tx - B.b.position.x, dz = tz - B.b.position.z, dy = ty - B.b.position.y; rz = -Math.atan2(dx, dy) * .9; rx = Math.atan2(dz, dy) * .9; rx += Math.sin(t * 2 + s) * .05; }
-        else { rx = Math.sin(t * 2.2 + s) * .7; rz = Math.sin(t * 1.7 + s * 2.1) * .7; }
-        B.b.rotation.set(rx, 0, rz); B.m.uniforms.uA.value = k * (e > 13 && e < 20 ? (Math.sin(t * 9 + B.i) > 0 ? 1.3 : .25) : 1) * (B.i === beams.length - 1 ? 1.4 : 1);
-        if (e > 13 && R() < dt * 2) B.m.uniforms.diffuse.value.set(pick(COLS)); });
-      if (show && Math.floor(e * 2.5) !== f.beat) { f.beat = Math.floor(e * 2.5); AU.tone(PENTA[f.beat % 9] * (e > 13 ? 2 : 1), PENTA[f.beat % 9] * (e > 13 ? 2 : 1), .5, .04, 0, 'triangle'); if (f.beat % 4 === 0) AU.burst(.35, 140, .2); }
-      if (e > 23) { ev = null; CU.uPow.value = 1; CU.uWaveOn.value = 0; beams.forEach(B => B.b.visible = false); if (AU.ctx) AU.city.gain.setTargetAtTime(.02, AU.ctx.currentTime, .5); } }
+      cp[n * 3] = p.x + ox; cp[n * 3 + 1] = y; cp[n * 3 + 2] = p.z + oz; const head = c.dir > 0; cc[n * 3] = 1; cc[n * 3 + 1] = head ? .9 : .12; cc[n * 3 + 2] = head ? .7 : .06; n++; }
+    cg.setDrawRange(0, n); cg.attributes.position.needsUpdate = cg.attributes.color.needsUpdate = true; cm.uniforms.uG.value = (.35 + U.uGlow.value * .6) * P;
+    if (!ev) return;
+    ev.t += dt; const e = ev.t, f = ev.f;
+    if (!SY.ok() && AU.ctx) SY.start(e);
+    if (SY.ok()) while (ev.si < score.length && score[ev.si][0] < e + .25) { const [te, fn] = score[ev.si++]; if (te >= e - .05) fn(SY.at(te)); }
+    const inBuild = e >= T0 && e < BUILD, inRoll = e >= BUILD && e < ROLL, inDrop = e >= ROLL && e < END;
+    const bt = e >= T0 ? (e - T0) / BEAT : -1, bi = Math.floor(bt), ph = bt - bi, kickE = (e >= T0 && e < END && !(e > ROLL - 2 * BEAT && e < ROLL)) ? Math.exp(-ph * 5) : 0;
+    // blackout
+    if (e < .6) CU.uPow.value = R() < .5 ? 1 : .15; else if (e < T0) { CU.uPow.value = Math.max(0, CU.uPow.value - dt * 7); if (!f.out) { f.out = 1; if (AU.ctx) AU.city.gain.setTargetAtTime(0, AU.ctx.currentTime, .2); } }
+    // the power wave rolls out of the ring
+    if (e >= T0 && !f.wave) { f.wave = 1; CU.uWaveOn.value = 1; CU.uWaveR.value = 0; CU.uPow.value = 1; ringM.emissiveIntensity = 40; }
+    if (f.wave && CU.uWaveOn.value) { CU.uWaveR.value += dt * 2.6; if (CU.uWaveR.value > 16) CU.uWaveOn.value = 0; }
+    if (inBuild) { CU.uPow.value = 1; CU.uPump.value = kickE * .35; }
+    if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD); CU.uPow.value = lerp(1, .25, k) * (k > .5 && R() < .3 ? .4 : 1); CU.uPump.value = 0; ringM.emissiveIntensity = 8 + k * 40; }
+    if (inDrop) { if (!f.drop) { f.drop = 1; ctx.flash(.28, '#ffffff'); ctx.shake(.6); } const strobe = e > END - 8 * BEAT; CU.uPow.value = (.65 + .35 * kickE) * (strobe ? (Math.floor(bt * 4) % 2 ? .35 : 1) : 1); CU.uPump.value = kickE; ringM.emissiveIntensity = 14 + kickE * 40; CU.uHue.value.set(COLS[2 + (bi % 5)]); }
+    if (e >= END) { CU.uPump.value = Math.max(0, CU.uPump.value - dt * 2); CU.uPow.value = Math.min(1, CU.uPow.value + dt * .8); }
+    // the beams
+    const vis = e > T0 + 8 * BEAT && e < OUT, fade = sm((e - T0 - 8 * BEAT) / (4 * BEAT)) * (1 - sm((e - END) / 3));
+    beams.forEach(B => { B.b.visible = vis; if (!vis) return; const nb = beams.length - 1, i = B.i, lead = i === nb; let tx = 0, tz = 0, I = fade, sp = 3;
+      if (inBuild) { tx = Math.sin(e * .7 + i) * .45; tz = Math.cos(e * .5 + i * 1.3) * .45; I *= .5 + .3 * kickE; sp = 2; }
+      else if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD), dx = BE[0] - B.b.position.x, dz = BE[1] - B.b.position.z, dy = 8 - B.b.position.y; tz = -Math.atan2(dx, dy) * k + Math.sin(e * 1.5 + i) * .4 * (1 - k); tx = Math.atan2(dz, dy) * k + Math.cos(e * 1.2 + i) * .4 * (1 - k); const sub = k < .5 ? 2 : k < .75 ? 4 : 8; I *= .5 + .6 * k + .5 * (Math.floor(bt * sub) % 2); sp = 4; }
+      else if (e >= ROLL) { const pat = Math.floor((bt - (ROLL - T0) / BEAT) / 4) % 4, b2 = bi; if (lead) { tx = 0; tz = 0; } else if (pat === 0) { tz = (i / (nb - 1) - .5) * 1.5; tx = (b2 % 2 ? .25 : -.25); } else if (pat === 1) { tz = i % 2 ? .65 : -.65; tx = (b2 % 2 ? 1 : -1) * .3; } else if (pat === 2) { const a = b2 * .9 + i * TAU / nb; tx = Math.cos(a) * .6; tz = Math.sin(a) * .6; } else { tx = Math.sin(b2 * 1.7 + i) * .15; tz = Math.cos(b2 * 1.3 + i) * .15; }
+        I *= .55 + kickE * .9; if (e > END - 8 * BEAT && e < END) I *= Math.floor(bt * 4) % 2 ? .1 : 1.4; sp = 14; if (Math.floor(bt) !== B.lastB) { B.lastB = Math.floor(bt); B.m.uniforms.diffuse.value.set(lead ? '#fff4d8' : COLS[(B.lastB + i) % COLS.length]); } }
+      B.rx += (tx - B.rx) * (1 - Math.exp(-dt * sp)); B.rz += (tz - B.rz) * (1 - Math.exp(-dt * sp)); B.b.rotation.set(B.rx, 0, B.rz); B.m.uniforms.uA.value = I * (lead ? 1.5 : 1); });
+    if (e > OUT) { ev = null; CU.uPow.value = 1; CU.uPump.value = 0; CU.uWaveOn.value = 0; beams.forEach(B => B.b.visible = false); if (AU.ctx) AU.city.gain.setTargetAtTime(.02, AU.ctx.currentTime, .5); }
   });
-  { const done = new Set(); island.traverse(o => { if (!o.isMesh || !o.material || done.has(o.material) || o.material === water.mat || o.material === water.wallMat || o.material.isShaderMaterial || o === wl || o.material === leafMat || o.material === facM || o.material === glassM) return; done.add(o.material); underwater(o.material, SEA, 1.15); }); }
+  { const done = new Set(); island.traverse(o => { if (!o.isMesh || !o.material || done.has(o.material) || o.material === water.mat || o.material === water.wallMat || o.material.isShaderMaterial || o === wl || o.material === leafMat || o.material === facM || o.material === glassM || o.material === strobeM || o.material === beaconM) return; done.add(o.material); underwater(o.material, SEA, 1.15); }); }
   ctx.api = api; return ctx;
 }

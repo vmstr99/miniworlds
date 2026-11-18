@@ -8,7 +8,7 @@ import { createDeck, KEYDEF } from './deck.js';
 
 const WORLDS = { palau: () => import('./palau.js'), vesuvius: () => import('./vesuvius.js'), alps: () => import('./alps.js'), dunes: () => import('./dunes.js'), city: () => import('./city.js') };
 const ORDER = ['palau', 'vesuvius', 'alps', 'dunes', 'city'], BASE = { time: 1, clouds: 1, rain: 0, wind: 1, glow: 1, life: 2 };
-let deck = null, busy = false, cur = null, meta = null;
+let deck = null, busy = false, cur = null, meta = null, queued = false;
 const E = initEngine({ pointerFilter: e => deck && deck.pointerFilter(e) });
 createFX(E);
 const evOn = () => !!(E.world && E.world.api && E.world.api.evOn);
@@ -28,35 +28,43 @@ updCount();
 /* arrival and departure: the world rises out of the deck with a little overshoot, and sinks back into it */
 let anim = null; const easeOutBack = t => { const c = 1.5; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 E.fx.push({ step(dt) { if (!anim || !anim.isl) return; anim.t += dt; const k = clamp(anim.t / anim.d, 0, 1);
-  if (anim.kind === 'in') { anim.isl.scale.setScalar(Math.max(.001, easeOutBack(k))); anim.isl.position.y = (1 - sm(k)) * -2.2; anim.isl.rotation.y = (1 - sm(k)) * -.5; }
+  if (anim.kind === 'in') { anim.isl.scale.setScalar(Math.max(.001, easeOutBack(k))); anim.isl.position.y = (1 - sm(k)) * -2.2; anim.isl.rotation.y = (1 - sm(k)) * -.5; E.applyCam(k); }
   else { const e = k * k; anim.isl.scale.setScalar(Math.max(.001, 1 - e)); anim.isl.position.y = -2.4 * e; anim.isl.rotation.y = e * .4; }
   if (k >= 1) { const r = anim.res; anim = null; r && r(); } } });
 const play = (kind, isl, d) => new Promise(res => { anim = { kind, isl, d, t: 0, res }; });
 const frame = () => new Promise(r => requestAnimationFrame(() => r()));
 
 async function load(id, first) {
-  busy = true; say('LOADING'); const modP = WORLDS[id]();
-  if (E.world) { deck.sfx.whoosh(); await play('out', E.world.island, .45); E.unmount(); }
+  busy = true; E.busy = true; say('LOADING'); const modP = WORLDS[id]();
+  const mk = n => (window.__marks = window.__marks || []).push([n, performance.now()]); mk('out');
+  if (E.world) { deck.sfx.whoosh(); await play('out', E.world.island, .45); mk('outEnd'); E.unmount(); }
   let mod; try { mod = await modP; } catch (e) { console.error(e); say('LOAD FAILED'); busy = false; return; }
   meta = mod.META; Object.assign(E.MOD, BASE, meta.preset || {}); if (first && Q.has('time')) E.MOD.time = clamp(+Q.get('time'), 0, 3);
   deck.redraw(); await frame();
   const ctx = mod.build(); ctx.meta = meta; ctx.id = id; cur = id;
   ['rain', 'glow', 'life', 'wind', 'clouds'].forEach(k => { if (ctx.api && ctx.api[k]) ctx.api[k](E.MOD[k]); });
   await E.waitReady();
-  if (E.renderer.compileAsync) { try { ctx.island.scale.setScalar(1); await Promise.race([E.renderer.compileAsync(E.scene, E.camera), new Promise(r => setTimeout(r, 2500))]); ctx.island.scale.setScalar(.001); } catch (e) {} }
+  // warm everything up off screen: compile every material (hidden ones too) with its shadow and transmission variants and
+  // upload every texture, so the world rises without a single hitch
+  { const hidden = []; ctx.island.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } }); ctx.island.scale.setScalar(1);
+    if (E.renderer.compileAsync) { try { await Promise.race([E.renderer.compileAsync(E.scene, E.camera), new Promise(r => setTimeout(r, 2500))]); } catch (e) {} }
+    E.composer.renderToScreen = false; E.step(0); E.composer.render(); E.composer.render(); E.composer.renderToScreen = true; // the real pipeline, off screen
+    hidden.forEach(o => { o.visible = false; }); ctx.island.scale.setScalar(.001); await frame(); }
   E.ready = true; E.spinDeg = 0; history.replaceState(null, '', location.pathname + location.search.replace(/([?&])world=[^&]*&?/, '$1').replace(/[?&]$/, '') + '#' + id);
   document.title = meta.name + ' · Wonder Deck HD'; cap(meta); count++; store.set('k9hd-worlds', count); updCount(); say(meta.name.toUpperCase()); deck.ledAll();
   if (!first) deck.sfx.arrive();
-  if (first && Q.has('shot')) ctx.island.scale.setScalar(1); else await play('in', ctx.island, 1.1);
+  mk('in'); if (first && Q.has('shot')) { ctx.island.scale.setScalar(1); E.applyCam(1); } else await play('in', ctx.island, 1.3); mk('inEnd');
+  E.busy = false; E.calmAt = E.clock + 1.5;
+  const prefetch = () => Object.values(E.looks()).forEach(L => E.needSky(L.sky)); (window.requestIdleCallback || setTimeout)(prefetch, { timeout: 4000 });
   busy = false;
   if (first && Q.get('keys')) for (const k of Q.get('keys').split(',')) { deck.press(+k); await new Promise(r => setTimeout(r, 200)); } // test hook: press keys after load
   if (first) { if (Q.get('ev')) ctx.api.ev(); const ff = +Q.get('ff') || 0; for (let k = 0; k < ff / .05; k++) E.step(.05); }
-  busy = false;
+  busy = false; if (queued) { queued = false; load(ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]); }
 }
 
 function onPress(d, i) {
   E.AUD.get();
-  if (d.id === 'world') { if (busy) return; load(ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]); return; }
+  if (d.id === 'world') { if (busy) { queued = true; return; } load(ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]); return; }
   if (busy || !E.world) return;
   if (d.levels) { const v = (E.MOD[d.id] + 1) % 4; E.setMod(d.id, v); deck.drawDecal(i); deck.sfx.level(v);
     const label = d.id === 'rain' && meta.rainIs ? meta.rainIs.toUpperCase() : d.label; say(label + ' · ' + d.levels[v].toUpperCase()); return; }
