@@ -10,7 +10,7 @@ export const META = { name: 'Midsummer Night', line: 'Snow peaks, a village in t
 export function build() {
   const N = makeNoise(+(Q.get('seed') || 11)), S = 10, H5 = 5, K = S / 6.4, LAKE = .17 * K, DEPTH = SLAB, NORM = 2.4;
   const ctx = createEngine({ cam: { target: [0, 1.1, 0], dist: 46, pol: 1.04, az: Math.PI / 4, min: 9, max: 60 }, look: 'night', sunRef: 1, bloom: [.6, .5, .85], sat: 1.04, stars: true,
-    skies: { night: 'sky_night.rgbe.png' }, looks: { night: { sky: 'night', dir: [-.3, .9, -.75], col: '#9fb2ff', I: .6, env: .22, exp: 1.15, skyI: .32 } } });
+    skies: { night: 'sky_night.rgbe.png' }, looks: { night: { sky: 'night', dir: [-.3, .9, -.75], col: '#a8b8ff', I: .95, env: .34, exp: 1.32, skyI: .32 } } });
   const { island, tex, U, MATS } = ctx; ctx.waterLevel = LAKE; U.uCloud.value = 0;
   const T = { snow: tex('snow_diff.jpg'), snowN: tex('snow_nor.jpg', false), rock: tex('lime_diff.jpg'), rockN: tex('lime_nor.jpg', false), dark: tex('rock_diff.jpg'), grass: tex('mtn_diff.jpg'), grassN: tex('mtn_nor.jpg', false), forest: tex('forest_diff.jpg'), forestN: tex('forest_nor.jpg', false),
     roof: tex('roof_diff.jpg'), roofN: tex('roof_nor.jpg', false), plaster: tex('plaster_diff.jpg'), wood: tex('pine_diff.jpg'), fir: tex('fir_diff.jpg', true, false), firA: tex('fir_alpha.jpg', false, false), firN: tex('fir_nor.jpg', false, false), waterN: tex('water_nor.jpg', false) };
@@ -53,7 +53,7 @@ export function build() {
     const m = new THREE.MeshStandardMaterial({ color: '#2a2e2a', roughness: .5 }); MATS.push(m); const g = new THREE.Group(); g.add(new THREE.Mesh(body, m)); g.scale.setScalar(3); island.add(g); ctx.life(g, 2); return g; })();
   makeSnowfall(ctx, 1400, [-1, 4.9, -2.4, -.3, -1, 4.9], [.6, .7, .65], .22);
 
-  { const moon = new THREE.Mesh(new THREE.SphereGeometry(.46, 32, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 3.1, 2.9) })); moon.position.set(-1.9, 7.4, -4.8); island.add(moon); }
+  { const moon = new THREE.Mesh(new THREE.SphereGeometry(.46, 32, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 3.1, 2.9) })); moon.position.set(.9, 7.0, -7.2); island.add(moon); }
   /* the lake: a true mirror with gentle ripples */
   const lake = new Water(new THREE.PlaneGeometry(S, S), { textureWidth: LO ? 512 : 1024, textureHeight: LO ? 512 : 1024, waterNormals: T.waterN, sunDirection: new THREE.Vector3(.5, .9, -.45).normalize(), sunColor: 0x8899cc, waterColor: 0x061420, distortionScale: .35, alpha: 1, fog: false });
   T.waterN.wrapS = T.waterN.wrapT = THREE.RepeatWrapping; lake.rotation.x = -Math.PI / 2; lake.position.y = LAKE; lake.material.uniforms.size.value = 4; lake.material.uniforms.alpha.value = .9; lake.material.transparent = true; if (!Q.has('nolake')) island.add(lake);

@@ -122,13 +122,45 @@ export function build() {
     if (R() < .45) put(parts.fac, CY(.03, .055, 10), x + rnd(-.05, .05), y + Hm, z + rnd(-.05, .05), 0, s, y + 99, '#8a8478');
     if (R() < .3) put(parts.fac, BX(.06, .03, .04), x + rnd(-.06, .06), y + Hm, z + rnd(-.06, .06), 0, s, y + 99, '#9a968e');
     if (R() < .28) { const sd = R() < .5; neonOn(sd ? x + fw / 2 + .008 : x, y + Hm * rnd(.25, .7), sd ? z : z + fd / 2 + .008, sd ? .012 : fw * .7, sd ? Math.min(.4, Hm * .4) : .028, sd ? .05 : .012); } };
-  { const lots = []; for (let gx = -11; gx <= 11; gx++) for (let gz = -11; gz <= 11; gz++) { const x = gx * GRID, z = gz * GRID; if (CITY(x, z)) lots.push([x, z, sm((-(x + z) / 1.414 + 1.4) / 6.2)]); }
-    lots.sort((a, b) => b[2] - a[2]); const heroes = [], KINDS = ['deco', 'twist', 'round', 'spire', 'mast', 'octa', 'pyramid', 'deco', 'round'];
+  /* civic landmarks, wide and low, so the skyline has mass and not only towers: a stadium, a riverside power station,
+     an opera house on the promenade and a broad art-deco block */
+  const RES = [[-2.5, 1.1, 1.0], [-1.3, 1.6, .7], [.6, -3.4, .85], [-1.0, -1.7, .7]];
+  const copperM = new THREE.MeshStandardMaterial({ color: '#5f9a86', metalness: .55, roughness: .42 }), concM = new THREE.MeshStandardMaterial({ map: T.plaster, color: '#cfc9be', roughness: .85 }), seatM = new THREE.MeshStandardMaterial({ color: '#7a2a28', roughness: .8 });
+  const pitchM = ctx.glowMat(new THREE.MeshStandardMaterial({ map: T.grass, color: '#5a9a3a', roughness: .9, emissive: '#2a5a1a', emissiveIntensity: .4 }), .5), rimM = ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#111', emissive: '#cfe6ff', emissiveIntensity: 3 }), 3), floodM = ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#222', emissive: '#fff6e0', emissiveIntensity: 6 }), 7);
+  MATS.push(copperM, concM, seatM, pitchM, rimM, floodM);
+  const civic = (geo, m, x, y, z, ry = 0, shadow = true) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = shadow; o.receiveShadow = true; island.add(o); return o; };
+  { // the stadium: a tiered elliptical bowl, a lit rim, four floodlight masts and a striped pitch
+    const [x, z] = RES[0], y = hAt(x, z) - .02, ry = .35, bowl = new THREE.LatheGeometry([[.52, 0], [.62, 0], [.62, .2], [.7, .26], [.62, .28], [.5, .05]].map(([r, h]) => new THREE.Vector2(r, h)), 64); bowl.scale(1.3, 1, .95);
+    civic(bowl, concM, x, y, z, ry); const seats = new THREE.LatheGeometry([[.4, .02], [.6, .2]].map(([r, h]) => new THREE.Vector2(r, h)), 64); seats.scale(1.3, 1, .95); civic(seats, seatM, x, y + .01, z, ry).material.side = THREE.DoubleSide;
+    const pitch = new THREE.CircleGeometry(.42, 48).rotateX(-Math.PI / 2); pitch.scale(1.3, 1, .95); civic(pitch, pitchM, x, y + .025, z, ry);
+    const rim = new THREE.TorusGeometry(.66, .008, 4, 96).rotateX(Math.PI / 2); rim.scale(1.3, .95, 1); civic(rim, rimM, x, y + .265, z, ry, false);
+    [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([a, b]) => { const px = .86 * a, pz = .64 * b, cx = x + px * Math.cos(ry) + pz * Math.sin(ry), cz = z - px * Math.sin(ry) + pz * Math.cos(ry); civic(CY(.008, .62, 6, .014), concM, cx, y, cz); civic(new THREE.BoxGeometry(.12, .05, .02), floodM, cx, y + .64, cz, Math.atan2(cx - x, cz - z), false); }); }
+  { // the opera house: a stepped plinth, a colonnaded foyer, a fly tower and a copper dome
+    const [x, z] = RES[1], y = hAt(x, z) - .02, ry = -Math.PI / 4, g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; island.add(g);
+    const add = (geo, m, px, py, pz) => { const o = new THREE.Mesh(geo, m); o.position.set(px, py, pz); o.castShadow = o.receiveShadow = true; g.add(o); return o; };
+    [[1.0, .78], [.92, .7], [.84, .62]].forEach(([w, d], i) => add(BX(w, .03, d), concM, 0, i * .03, 0));
+    add(BX(.72, .26, .46), concM, 0, .09, -.02); add(BX(.4, .5, .3), concM, 0, .09, -.08);
+    for (let k = 0; k < 8; k++) add(CY(.016, .2, 10), concM, -.3 + k * .0857, .09, .23); add(BX(.72, .04, .1), concM, 0, .29, .22);
+    const foyer = new THREE.Mesh(BX(.66, .18, .02), crownM); foyer.position.set(0, .1, .205); g.add(foyer);
+    const dome = new THREE.SphereGeometry(.16, 32, 16, 0, TAU, 0, Math.PI / 2); dome.scale(1, 1.15, 1); add(CY(.17, .07, 32), concM, 0, .59, -.08); add(dome, copperM, 0, .66, -.08); add(CY(.012, .08, 8), goldM, 0, .84, -.08);
+    [-1, 1].forEach(sd => { const q = new THREE.SphereGeometry(.09, 20, 10, 0, TAU, 0, Math.PI / 2); add(BX(.14, .1, .14), concM, sd * .3, .35, .1); add(q, copperM, sd * .3, .45, .1); }); }
+  { // the riverside power station: a long brick hall, sawtooth sheds and four chimneys
+    const [x, z] = RES[2], y = hAt(x, z) - .02, ry = -.4, cs = Math.cos(ry), sn = Math.sin(ry), at = (px, pz) => [x + px * cs + pz * sn, z - px * sn + pz * cs], s = ++seed;
+    { const [hx, hz] = at(0, 0); put(parts.fac, BX(1.1, .42, .42), hx, y, hz, ry, s, y, '#8a4a36'); put(parts.fac, BX(1.0, .1, .32), hx, y + .42, hz, ry, s, y + 99, '#7a4232'); }
+    for (let k = 0; k < 5; k++) { const [sx, sz] = at(-.44 + k * .22, .36); const g = new THREE.BufferGeometry(); put(parts.fac, BX(.2, .16, .3), sx, y, sz, ry, s + 1, y, '#9a5a42'); const saw = new THREE.CylinderGeometry(.0, .12, .1, 3, 1).rotateZ(Math.PI / 2).rotateY(Math.PI / 2); saw.scale(1, 1, .3); put(parts.fac, saw.translate(0, .05, 0), sx, y + .16, sz, ry, s + 1, y + 99, '#6a3a2a'); }
+    [[-.5, -.17], [.5, -.17], [-.5, .17], [.5, .17]].forEach(([px, pz]) => { const [cx, cz] = at(px, pz); put(parts.fac, CY(.05, 1.25, 16, .065), cx, y, cz, 0, s + 2, y + 99, '#ddd6cc'); beacon(cx, y + 1.27, cz); }); }
+  { // a broad art-deco block: wide setbacks around a central tower, gold bands and a lit crown
+    const [x, z] = RES[3], y = hAt(x, z) - .02, s = ++seed; let yy = y, w = 1.0, d = .7;
+    [.5, .35, .3, .5, .35].forEach((h, i) => { put(parts.fac, BX(w, h, d), x, yy, z, -Math.PI / 4, s, y, '#e6d8c0'); put(parts.gold, BX(w + .014, .02, d + .014).rotateY(-Math.PI / 4), x, yy + h - .02, z); yy += h; w *= i < 2 ? .78 : .7; d *= i < 2 ? .85 : .7; });
+    for (let k = 0; k < 4; k++) put(parts.crown, BX(w * (1 - k * .2), .06, d * (1 - k * .2)).rotateY(-Math.PI / 4), x, yy + k * .06, z); put(parts.gold, CY(.006, .45, 6, .016), x, yy + .24, z); beacon(x, yy + .7, z); tall.push([x, yy + .6, z]); }
+  const reserved = (x, z, m = 0) => RES.some(([rx, rz, r]) => Math.hypot(x - rx, z - rz) < r + m);
+  { const lots = []; for (let gx = -11; gx <= 11; gx++) for (let gz = -11; gz <= 11; gz++) { const x = gx * GRID, z = gz * GRID; if (CITY(x, z) && !reserved(x, z, .12)) lots.push([x, z, sm((-(x + z) / 1.414 + 1.4) / 6.2)]); }
+    lots.sort((a, b) => b[2] - a[2]); const heroes = [], KINDS = ['deco', 'twist', 'round', 'spire', 'mast', 'octa', 'pyramid'];
     for (const L of lots) { if (heroes.length >= KINDS.length) break; if (heroes.some(h => Math.hypot(h[0] - L[0], h[1] - L[1]) < 1.15)) continue; heroes.push(L); }
     heroes.forEach((L, i) => hero(L[0], L[1], KINDS[i], 1.9 + L[2] * 2.0 + R() * .5));
     lots.forEach(L => { if (heroes.includes(L) || heroes.some(h => Math.hypot(h[0] - L[0], h[1] - L[1]) < .5)) return; if (R() < .44) return; filler(L[0] + rnd(-.03, .03), L[1] + rnd(-.03, .03), L[2]); }); }
   // streamline hotels along the promenade
-  for (let k = 0; k < 9; k++) { const a = -3.2 + k * .62, x = a * .7071, z = -a * .7071; let px = x, pz = z; for (let q = 0; q < 20 && shoreD(px, pz) > -.42; q++) { px -= .05; pz -= .05; } if (!CITY(px, pz) && riverD(px, pz) < .6) continue; if (k % 3 === 2) continue;
+  for (let k = 0; k < 9; k++) { const a = -3.2 + k * .62, x = a * .7071, z = -a * .7071; let px = x, pz = z; for (let q = 0; q < 20 && shoreD(px, pz) > -.42; q++) { px -= .05; pz -= .05; } if (!CITY(px, pz) && riverD(px, pz) < .6) continue; if (k % 3 === 2 || reserved(px, pz, .35)) continue;
     const y = hAt(px, pz) - .02, H = rnd(.45, .85), w = rnd(.42, .6), s = 100 + (++seed); put(parts.fac, BX(w, H, .2), px, y, pz, -Math.PI / 4, s, y, '#f2ece2'); [-1, 1].forEach(e => put(parts.fac, CY(.1, H, 18), px + Math.cos(Math.PI / 4) * e * w / 2, y, pz + Math.sin(Math.PI / 4) * e * w / 2, 0, s, y, '#f2ece2'));
     parts.neon[k % NEONC.length].push(BX(w * .6, .035, .012).rotateY(-Math.PI / 4).translate(px + .07, y + H + .02, pz + .07).toNonIndexed()); }
   const mergeTo = (list, m, shadow = true) => { if (!list.length) return null; const o = new THREE.Mesh(mergeGeometries(list), m); o.castShadow = shadow; o.receiveShadow = true; island.add(o); return o; };
@@ -212,36 +244,37 @@ export function build() {
   const beamG = new THREE.CylinderGeometry(.02, .45, 10, 24, 1, true).translate(0, -5, 0).rotateX(Math.PI);
   { const uv = beamG.attributes.uv, p = beamG.attributes.position; for (let i = 0; i < uv.count; i++) uv.setY(i, clamp(p.getY(i) / 10, 0, 1)); }
   const origins = tall.slice().sort((a, b) => b[1] - a[1]).slice(0, 9); origins.push([BE[0], hAt(BE[0], BE[1]) + 2.9, BE[1]]);
-  const COLS = ['#ffffff', '#bfe0ff', '#ff3aa0', '#3af0ff', '#b070ff', '#ffb040', '#40ff90'];
+  const COLS = ['#ffffff', '#dfeaff', '#bcd4ff', '#ffffff', '#cfe6ff'];
   const beams = origins.map(([x, y, z], i) => { const m = beamM.clone(); m.uniforms = { uA: { value: 0 }, diffuse: { value: new THREE.Color(COLS[i % 2]) } }; const b = new THREE.Mesh(beamG, m); b.position.set(x, y, z); b.visible = false; b.renderOrder = 8; island.add(b); return { b, m, i, rx: 0, rz: 0 }; });
   const AU = makeAudio(); AU.onStart = A => { A.surf = A.loop('lowpass', 420, .7, .08); A.hum = A.loop('lowpass', 120, 1.2, .02); A.city = A.loop('bandpass', 700, .4, .02); };
-  const BPM = 128, BEAT = 60 / BPM, T0 = 1.8, BUILD = T0 + 16 * BEAT, ROLL = BUILD + 8 * BEAT, END = ROLL + 32 * BEAT, OUT = END + 3.2;
-  // the synth
-  const SY = (() => { let c, o, t0; const nz = (t, dur, type, f, vol, q = .8, f1) => { const s = c.createBufferSource(); s.buffer = AU.noise; const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t + dur); fl.Q.value = q; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .002); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(fl); fl.connect(g); g.connect(o); s.start(t, Math.random() * 2); s.stop(t + dur + .02); };
-    const osc = (t, type, f0, f1, dur, vol, cut, q = 1, att = .004) => { const os = c.createOscillator(); os.type = type; os.frequency.setValueAtTime(f0, t); if (f1 !== f0) os.frequency.exponentialRampToValueAtTime(f1, t + dur * .9); const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); let n = os; if (cut) { const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut * 2.4, t); fl.frequency.exponentialRampToValueAtTime(cut, t + dur * .7); fl.Q.value = q; os.connect(fl); n = fl; } n.connect(g); g.connect(o); os.start(t); os.stop(t + dur + .03); };
-    return { start(now) { c = AU.ctx; o = AU.out; t0 = c.currentTime - now; }, at: e => t0 + e, ok: () => !!c,
-      kick(t, g = 1) { osc(t, 'sine', 165, 40, .42, .95 * g); nz(t, .02, 'highpass', 2500, .22 * g); },
-      hat(t, open, g = 1) { nz(t, open ? .22 : .045, 'highpass', 7600, (open ? .11 : .08) * g); },
-      clap(t) { for (let k = 0; k < 3; k++) nz(t + k * .011, .1 + k * .03, 'bandpass', 1350, .32, 1.1); },
-      snare(t, g) { nz(t, .11, 'bandpass', 1900, .32 * g, .9); osc(t, 'triangle', 210, 160, .08, .1 * g); },
-      bass(t, f, dur, cut, g = .42) { osc(t, 'sawtooth', f, f, dur, g, cut, 9); osc(t, 'square', f / 2, f / 2, dur, g * .5, cut * .6, 4); },
-      stab(t, root, cut) { [0, 3, 7, 10].forEach(sv => [-8, 8].forEach(dt2 => { const os = c.createOscillator(); os.type = 'sawtooth'; os.frequency.value = root * Math.pow(2, sv / 12); os.detune.value = dt2; const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut, t); fl.frequency.exponentialRampToValueAtTime(320, t + .3); fl.Q.value = 5; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.045, t + .005); g.gain.exponentialRampToValueAtTime(.0001, t + .32); os.connect(fl); fl.connect(g); g.connect(o); os.start(t); os.stop(t + .35); })); },
-      riser(t, dur) { const s = c.createBufferSource(); s.buffer = AU.noise; s.loop = true; const fl = c.createBiquadFilter(); fl.type = 'bandpass'; fl.Q.value = 2.5; fl.frequency.setValueAtTime(350, t); fl.frequency.exponentialRampToValueAtTime(8000, t + dur); const g = c.createGain(); g.gain.setValueAtTime(.01, t); g.gain.exponentialRampToValueAtTime(.38, t + dur); g.gain.setValueAtTime(.0001, t + dur + .01); s.connect(fl); fl.connect(g); g.connect(o); s.start(t); s.stop(t + dur + .05);
-        const os = c.createOscillator(); os.type = 'sawtooth'; os.frequency.setValueAtTime(110, t); os.frequency.exponentialRampToValueAtTime(1100, t + dur); const g2 = c.createGain(); g2.gain.setValueAtTime(.002, t); g2.gain.exponentialRampToValueAtTime(.07, t + dur); g2.gain.setValueAtTime(.0001, t + dur + .01); os.connect(g2); g2.connect(o); os.start(t); os.stop(t + dur + .05); },
-      impact(t, g = 1) { osc(t, 'sine', 72, 22, 2.6, 1.0 * g, 0, 1, .003); nz(t, 2.6, 'lowpass', 1200, .7 * g, .7, 50); nz(t, 3, 'highpass', 5200, .22 * g, .5); nz(t, .08, 'highpass', 3000, .5 * g); },
-      down(t) { osc(t, 'sawtooth', 320, 28, 1.1, .22, 900, 2); nz(t + .9, .4, 'lowpass', 180, .5, .8, 40); } }; })();
-  const ROOTS = [55, 43.65, 49, 41.2], score = [];
-  { const B = (b, base) => base + b * BEAT; score.push([.6, t => SY.down(t)], [T0, t => SY.impact(t, .55)]);
-    for (let b = 0; b < 16; b++) { score.push([B(b, T0), t => SY.kick(t, .7 + b / 40)]); if (b >= 4) score.push([B(b + .5, T0), t => SY.hat(t, false)]); if (b >= 8) score.push([B(b + .75, T0), t => SY.hat(t, false, .6)]);
-      for (let q = 1; q < 4; q++) score.push([B(b + q / 4, T0), t => SY.bass(t, q === 2 ? 65.4 : 55, BEAT / 4 * .9, 160 + b * 38)]); }
-    for (let b = 0; b < 8; b++) { if (b < 6) { score.push([B(b, BUILD), t => SY.kick(t, 1)]); for (let q = 1; q < 4; q++) score.push([B(b + q / 4, BUILD), t => SY.bass(t, 55, BEAT / 4 * .9, 800 + b * 260)]); }
-      const sub = b < 4 ? 2 : b < 6 ? 4 : 8; for (let q = 0; q < sub; q++) score.push([B(b + q / sub, BUILD), t => SY.snare(t, .3 + (b * sub + q) / (8 * sub) * .9)]); }
-    score.push([BUILD, t => SY.riser(t, 8 * BEAT)]);
-    score.push([ROLL, t => SY.impact(t, 1)]);
-    for (let b = 0; b < 32; b++) { const r = ROOTS[Math.floor(b / 8) % 4]; score.push([B(b, ROLL), t => SY.kick(t, 1.05)]); if (b % 2) score.push([B(b, ROLL), t => SY.clap(t)]); score.push([B(b + .5, ROLL), t => SY.hat(t, true)]);
-      for (let q = 0; q < 4; q++) { if (q !== 2) score.push([B(b + q / 4 + .25, ROLL), t => SY.hat(t, false, .5)]); if (q) score.push([B(b + q / 4, ROLL), t => SY.bass(t, q === 3 ? r * 2 : r, BEAT / 4 * .85, 1400)]); }
-      if (b % 2 === 0) score.push([B(b + .5, ROLL), t => SY.stab(t, r * 4, 2600)]); if (b % 8 === 0 && b) score.push([B(b, ROLL), t => SY.impact(t, .35)]); }
-    score.push([END, t => SY.impact(t, .9)]); score.sort((a, b) => a[0] - b[0]); }
+  const BPM = 132, BEAT = 60 / BPM, T0 = 1.8, BUILD = T0 + 16 * BEAT, ROLL = BUILD + 8 * BEAT, END = ROLL + 32 * BEAT, OUT = END + 3.2;
+  // the synth: Berlin, not Ibiza. A kick with a rumble tail, offbeat hats, a resonant bassline, a dark drone, metallic hits
+  const SY = (() => { let c, o, rum, t0; const nz = (t, dur, type, f, vol, q = .8, f1, dest) => { const s = c.createBufferSource(); s.buffer = AU.noise; const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t + dur); fl.Q.value = q; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .002); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(fl); fl.connect(g); g.connect(dest || o); s.start(t, Math.random() * 2); s.stop(t + dur + .02); };
+    const osc = (t, type, f0, f1, dur, vol, cut, q = 1, att = .004, dest) => { const os = c.createOscillator(); os.type = type; os.frequency.setValueAtTime(f0, t); if (f1 !== f0) os.frequency.exponentialRampToValueAtTime(f1, t + dur * .9); const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); let n = os; if (cut) { const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut * 2.2, t); fl.frequency.exponentialRampToValueAtTime(cut, t + dur * .6); fl.Q.value = q; os.connect(fl); n = fl; } n.connect(g); g.connect(dest || o); os.start(t); os.stop(t + dur + .03); return g; };
+    return { start(now) { c = AU.ctx; o = AU.out; t0 = c.currentTime - now;
+        // the rumble: kicks feed a dark, lowpassed feedback delay that smears into a sub cloud
+        const d = c.createDelay(1); d.delayTime.value = BEAT / 4; const fb = c.createGain(); fb.gain.value = .62; const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 110; const out = c.createGain(); out.gain.value = .55; rum = c.createGain(); rum.gain.value = 1;
+        rum.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(out); out.connect(o); },
+      at: e => t0 + e, ok: () => !!c,
+      kick(t, g = 1, rumble = 1) { osc(t, 'sine', 150, 44, .5, 1.0 * g); osc(t, 'triangle', 300, 60, .06, .25 * g); if (rumble) osc(t, 'sine', 90, 40, .25, .7 * g * rumble, 0, 1, .004, rum); },
+      hat(t, open, g = 1) { nz(t, open ? .16 : .035, 'highpass', 8500, (open ? .09 : .06) * g, .7); },
+      clap(t) { nz(t, .07, 'bandpass', 1150, .22, 1.4); nz(t + .012, .12, 'bandpass', 1400, .14, 1.2); },
+      bass(t, f, cut, g = .3) { osc(t, 'sawtooth', f, f, BEAT / 4 * .8, g, cut, 13, .003); },
+      metal(t, f, g) { const car = c.createOscillator(), mod = c.createOscillator(), mg = c.createGain(), gn = c.createGain(); car.frequency.value = f; mod.frequency.value = f * 2.71; mg.gain.setValueAtTime(f * 3, t); mg.gain.exponentialRampToValueAtTime(f * .1, t + .35); mod.connect(mg); mg.connect(car.frequency); gn.gain.setValueAtTime(.0001, t); gn.gain.exponentialRampToValueAtTime(.12 * g, t + .003); gn.gain.exponentialRampToValueAtTime(.0001, t + .5); car.connect(gn); gn.connect(o); car.start(t); mod.start(t); car.stop(t + .55); mod.stop(t + .55); },
+      drone(t, dur) { [55, 55.6, 82.4].forEach((f, i) => { const os = c.createOscillator(); os.type = 'sawtooth'; os.frequency.value = f; const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.Q.value = 6; fl.frequency.setValueAtTime(90, t); fl.frequency.exponentialRampToValueAtTime(1500, t + dur); const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(i === 2 ? .04 : .09, t + dur * .6); g.gain.setValueAtTime(i === 2 ? .04 : .09, t + dur - .02); g.gain.exponentialRampToValueAtTime(.0001, t + dur); os.connect(fl); fl.connect(g); g.connect(o); os.start(t); os.stop(t + dur + .05); });
+        nz(t, dur, 'lowpass', 200, .05, .7, 2600); },
+      sub(t, g = 1) { osc(t, 'sine', 58, 30, 2.4, 1.0 * g, 0, 1, .003); nz(t, .05, 'highpass', 2500, .2 * g); } }; })();
+  const ACID = [55, 55, 110, 55, 65.4, 55, 55, 49], score = [];
+  { const B = (b, base) => base + b * BEAT; score.push([T0, t => SY.sub(t, .55)]);
+    for (let b = 0; b < 16; b++) { score.push([B(b, T0), t => SY.kick(t, .85 + b / 60)]); score.push([B(b + .5, T0), t => SY.hat(t, b >= 8)]); if (b >= 4) for (let q = 1; q < 4; q += 2) score.push([B(b + q / 4, T0), t => SY.hat(t, false, .4)]);
+      if (b >= 8) for (let q = 0; q < 4; q++) score.push([B(b + q / 4, T0), t => SY.bass(t, ACID[(b * 4 + q) % 8], 220 + (b - 8) * 40, .22)]); }
+    score.push([BUILD, t => SY.drone(t, 8 * BEAT - BEAT / 2)]);
+    for (let b = 0; b < 8; b++) { if (b < 7) score.push([B(b, BUILD), t => SY.metal(t, 330, .35 + b * .1)]); if (b >= 4 && b < 7) score.push([B(b + .5, BUILD), t => SY.metal(t, 495, .3 + b * .08)]); }
+    score.push([ROLL, t => { SY.sub(t, 1); SY.kick(t, 1.15); }]);
+    for (let b = 0; b < 32; b++) { const ph = b / 32; if (b) score.push([B(b, ROLL), t => SY.kick(t, 1.05)]); score.push([B(b + .5, ROLL), t => SY.hat(t, true)]); if (b % 2) score.push([B(b, ROLL), t => SY.clap(t)]);
+      for (let q = 0; q < 4; q++) { score.push([B(b + q / 4, ROLL), t => SY.bass(t, ACID[(b * 4 + q) % 8], 380 + 900 * (.5 + .5 * Math.sin(ph * Math.PI * 3)), .26)]); if (b >= 24 && q % 2) score.push([B(b + q / 4, ROLL), t => SY.hat(t, false, .6)]); }
+      if (b % 8 === 4) score.push([B(b + .75, ROLL), t => SY.metal(t, 247, .7)]); }
+    score.push([END, t => SY.sub(t, .8)]); score.sort((a, b) => a[0] - b[0]); }
   let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {}, si: 0 }; if (AU.ctx) SY.start(0); }, get evOn() { return !!ev; } };
   const NEONP = [(t) => .9 + .1 * Math.sin(t * 120), (t, dt) => R() < dt * 1.5 ? .1 : 1, t => .55 + .45 * Math.sin(t * 2.2), t => Math.sin(t * 3.4) > -.2 ? 1 : .08, (t) => (Math.sin(t * 37) > .3 && Math.sin(t * 5.1) > -.6) ? 1 : .25, () => 1];
   ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360));
@@ -268,16 +301,16 @@ export function build() {
     if (e >= T0 && !f.wave) { f.wave = 1; CU.uWaveOn.value = 1; CU.uWaveR.value = 0; CU.uPow.value = 1; ringM.emissiveIntensity = 40; }
     if (f.wave && CU.uWaveOn.value) { CU.uWaveR.value += dt * 2.6; if (CU.uWaveR.value > 16) CU.uWaveOn.value = 0; }
     if (inBuild) { CU.uPow.value = 1; CU.uPump.value = kickE * .35; }
-    if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD); CU.uPow.value = lerp(1, .25, k) * (k > .5 && R() < .3 ? .4 : 1); CU.uPump.value = 0; ringM.emissiveIntensity = 8 + k * 40; }
-    if (inDrop) { if (!f.drop) { f.drop = 1; ctx.flash(.28, '#ffffff'); ctx.shake(.6); } const strobe = e > END - 8 * BEAT; CU.uPow.value = (.65 + .35 * kickE) * (strobe ? (Math.floor(bt * 4) % 2 ? .35 : 1) : 1); CU.uPump.value = kickE; ringM.emissiveIntensity = 14 + kickE * 40; CU.uHue.value.set(COLS[2 + (bi % 5)]); }
+    if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD); CU.uPow.value = e > ROLL - BEAT / 2 ? 0 : lerp(1, .18, sm(k)); CU.uPump.value = 0; ringM.emissiveIntensity = e > ROLL - BEAT / 2 ? 0 : 6 + k * 30; }
+    if (inDrop) { if (!f.drop) { f.drop = 1; ctx.flash(.18, '#e8f0ff'); ctx.shake(.9); } const strobe = e > END - 8 * BEAT; CU.uPow.value = (.7 + .3 * kickE) * (strobe ? (Math.floor(bt * 2) % 2 ? .4 : 1) : 1); CU.uPump.value = kickE; ringM.emissiveIntensity = 14 + kickE * 40; CU.uHue.value.set(bi % 8 < 4 ? '#bcd4ff' : '#ffffff'); }
     if (e >= END) { CU.uPump.value = Math.max(0, CU.uPump.value - dt * 2); CU.uPow.value = Math.min(1, CU.uPow.value + dt * .8); }
     // the beams
     const vis = e > T0 + 8 * BEAT && e < OUT, fade = sm((e - T0 - 8 * BEAT) / (4 * BEAT)) * (1 - sm((e - END) / 3));
     beams.forEach(B => { B.b.visible = vis; if (!vis) return; const nb = beams.length - 1, i = B.i, lead = i === nb; let tx = 0, tz = 0, I = fade, sp = 3;
       if (inBuild) { tx = Math.sin(e * .7 + i) * .45; tz = Math.cos(e * .5 + i * 1.3) * .45; I *= .5 + .3 * kickE; sp = 2; }
-      else if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD), dx = BE[0] - B.b.position.x, dz = BE[1] - B.b.position.z, dy = 8 - B.b.position.y; tz = -Math.atan2(dx, dy) * k + Math.sin(e * 1.5 + i) * .4 * (1 - k); tx = Math.atan2(dz, dy) * k + Math.cos(e * 1.2 + i) * .4 * (1 - k); const sub = k < .5 ? 2 : k < .75 ? 4 : 8; I *= .5 + .6 * k + .5 * (Math.floor(bt * sub) % 2); sp = 4; }
-      else if (e >= ROLL) { const pat = Math.floor((bt - (ROLL - T0) / BEAT) / 4) % 4, b2 = bi; if (lead) { tx = 0; tz = 0; } else if (pat === 0) { tz = (i / (nb - 1) - .5) * 1.5; tx = (b2 % 2 ? .25 : -.25); } else if (pat === 1) { tz = i % 2 ? .65 : -.65; tx = (b2 % 2 ? 1 : -1) * .3; } else if (pat === 2) { const a = b2 * .9 + i * TAU / nb; tx = Math.cos(a) * .6; tz = Math.sin(a) * .6; } else { tx = Math.sin(b2 * 1.7 + i) * .15; tz = Math.cos(b2 * 1.3 + i) * .15; }
-        I *= .55 + kickE * .9; if (e > END - 8 * BEAT && e < END) I *= Math.floor(bt * 4) % 2 ? .1 : 1.4; sp = 14; if (Math.floor(bt) !== B.lastB) { B.lastB = Math.floor(bt); B.m.uniforms.diffuse.value.set(lead ? '#fff4d8' : COLS[(B.lastB + i) % COLS.length]); } }
+      else if (inRoll) { const k = (e - BUILD) / (ROLL - BUILD), dx = BE[0] - B.b.position.x, dz = BE[1] - B.b.position.z, dy = 8 - B.b.position.y; tz = -Math.atan2(dx, dy) * k + Math.sin(e * 1.5 + i) * .4 * (1 - k); tx = Math.atan2(dz, dy) * k + Math.cos(e * 1.2 + i) * .4 * (1 - k); I *= (.25 + .9 * k) * (e > ROLL - BEAT / 2 ? 0 : 1) * (.7 + .3 * Math.exp(-ph * 6)); sp = 2.5; }
+      else if (e >= ROLL) { const pat = Math.floor((bt - (ROLL - T0) / BEAT) / 4) % 4, b2 = bi; if (lead) { tx = 0; tz = 0; } else if (pat === 0) { tz = (i / (nb - 1) - .5) * 1.5; tx = (b2 % 2 ? .25 : -.25); } else if (pat === 1) { tz = i % 2 ? .65 : -.65; tx = (b2 % 2 ? 1 : -1) * .3; } else if (pat === 2) { const a = e * .9 + i * TAU / nb; tx = Math.cos(a) * .35; tz = Math.sin(a) * .35; } else { tx = Math.sin(b2 * 1.7 + i) * .15; tz = Math.cos(b2 * 1.3 + i) * .15; }
+        I *= .45 + kickE * .9; if (e > END - 8 * BEAT && e < END) I *= Math.floor(bt * 2) % 2 ? .08 : 1.3; sp = pat === 2 ? 4 : 9; if (Math.floor(bt) !== B.lastB) { B.lastB = Math.floor(bt); B.m.uniforms.diffuse.value.set(lead ? '#fff4e0' : COLS[(Math.floor(B.lastB / 4) + i) % COLS.length]); } }
       B.rx += (tx - B.rx) * (1 - Math.exp(-dt * sp)); B.rz += (tz - B.rz) * (1 - Math.exp(-dt * sp)); B.b.rotation.set(B.rx, 0, B.rz); B.m.uniforms.uA.value = I * (lead ? 1.5 : 1); });
     if (e > OUT) { ev = null; CU.uPow.value = 1; CU.uPump.value = 0; CU.uWaveOn.value = 0; beams.forEach(B => B.b.visible = false); if (AU.ctx) AU.city.gain.setTargetAtTime(.02, AU.ctx.currentTime, .5); }
   });

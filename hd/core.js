@@ -123,7 +123,7 @@ export function initEngine(opts = {}) {
     fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uStorm, uWarm, uSat, uFlash; uniform vec3 uFlashC; uniform vec2 uRes; varying vec2 vUv;
       float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       void main(){ vec2 d = vUv - .5; vec3 c = texture2D(tDiffuse, vUv).rgb;
-        c = mix(c, c * c * (3. - 2. * c), .16); float l = dot(c, vec3(.2126, .7152, .0722));
+        c = mix(c, c * c * (3. - 2. * c), .26); float l = dot(c, vec3(.2126, .7152, .0722));
         c += vec3(-.012, .002, .018) * (1. - l) + vec3(.018, .008, -.014) * l; c = mix(vec3(l), c, uSat - uStorm * .25 + uWarm * .06);
         c *= mix(vec3(1.), vec3(1.1, .98, .82), uWarm); c += vec3(.03, .012, 0.) * uWarm * (1. - l);
         c *= 1. - dot(d, d) * .55; c = mix(c, uFlashC, clamp(uFlash, 0., 1.)); c += (h(floor(vUv * uRes) + fract(uTime) * 91.) - .5) * .022; gl_FragColor = vec4(c, 1.); }` });
@@ -188,9 +188,9 @@ export function initEngine(opts = {}) {
     const dark = clamp(1 - cur.I / 2.2, 0, 1); U.uGlow.value = lerp(U.uGlow.value, GLOWL[MOD.glow] * (.4 + .6 * dark), f); w.GLOW.forEach(([m, b]) => { m.emissiveIntensity = b * U.uGlow.value; });
     w.LIFE.forEach(([o, lv]) => { o.visible = MOD.life >= lv; });
     skyU.uT.value = E.clock; if (SKY[skyTo]) skyK = Math.min(1, skyK + dt / 3); skyU.tA.value = SKY[skyFrom] || SKY[skyTo]; skyU.tB.value = SKY[skyTo] || SKY[skyFrom]; skyU.uMix.value = sm(skyK); skyU.uRotA.value = rotFrom; skyU.uRotB.value = rotTo; skyU.uI.value = cur.skyI; skyU.uStar.value = cur.star;
-    const envT = ENV[skyTo] || ENV[skyFrom]; // switch the environment at once (it is set before a world rises), never mid-fade if (envT && scene.environment !== envT) scene.environment = envT; if (skyK >= 1) { skyFrom = skyTo; rotFrom = rotTo; }
-    sun.position.copy(cur.dir).multiplyScalar(30); sun.color.copy(cur.col); sun.intensity = cur.I; renderer.toneMappingExposure = cur.exp; grade.uniforms.uWarm.value = cur.warm; grade.uniforms.uStorm.value = cl / 3; U.uSun.value = clamp(cur.I / (w.o.sunRef || 3), .14, 1);
-    w.MATS.forEach(m => { m.envMapIntensity = cur.env * (m.userData.env ?? 1); }); skyU.uFlash.value = Math.max(0, skyU.uFlash.value - dt * 7); grade.uniforms.uFlash.value = Math.max(0, grade.uniforms.uFlash.value - dt * 1.6);
+    const envT = ENV[skyTo] || ENV[skyFrom]; /* switch the environment at once, before a world rises, never mid-fade */ if (envT && scene.environment !== envT) scene.environment = envT; if (skyK >= 1) { skyFrom = skyTo; rotFrom = rotTo; }
+    sun.position.copy(cur.dir).multiplyScalar(30); sun.color.copy(cur.col); sun.intensity = cur.I; renderer.toneMappingExposure = cur.exp * .96; grade.uniforms.uWarm.value = cur.warm; grade.uniforms.uStorm.value = cl / 3; U.uSun.value = clamp(cur.I / (w.o.sunRef || 3), .14, 1);
+    w.MATS.forEach(m => { m.envMapIntensity = cur.env * .72 * (m.userData.env ?? 1); }); skyU.uFlash.value = Math.max(0, skyU.uFlash.value - dt * 7); grade.uniforms.uFlash.value = Math.max(0, grade.uniforms.uFlash.value - dt * 1.6);
     if (spin) { spin.t += dt; const k = sm(spin.t / .9), a = spin.da * k - spin.a0; spin.a0 = spin.da * k; tmp.copy(camera.position).sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), a); camera.position.copy(controls.target).add(tmp); if (spin.t >= .9) { spin = null; if (spinQ) { const d = Math.sign(spinQ); spinQ -= d; spin = { t: 0, a0: 0, da: d * Math.PI / 2 }; } } }
     w.steps.forEach(fn => fn(dt)); E.fx.forEach(fx => fx.step && fx.step(dt)); };
   E.step = step;
@@ -266,10 +266,10 @@ export function makeWater(ctx, hf, o) {
   wallMat.onBeforeCompile = sh => { Object.assign(sh.uniforms, WU);
     sh.vertexShader = 'uniform float uTime, uWave, uWind; varying float vDp; varying vec3 vWp;\n' + WAVE + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvDp = uv.y; vWp = position; if (uv.y < .001) { vec4 wpw = modelMatrix * vec4(position, 1.); transformed.y += wav(wpw.xz, uTime); }');
     sh.fragmentShader = 'uniform vec3 uDeep, uShal; uniform float uSun, uTime; varying float vDp; varying vec3 vWp;\n' + GLSL_NOISE + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n float f = 1. - exp(-vDp * ' + (o.wallK ?? 2.6).toFixed(2) + '), ab = smoothstep(.45, 1., vDp); diffuseColor.rgb = mix(mix(uShal * .95, uDeep * .6, f), vec3(.002, .006, .014), ab); diffuseColor.a = mix(.5, .9, f) + ab * .08 + smoothstep(.03, .0, vDp) * .3;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n float f = 1. - exp(-vDp * ' + (o.wallK ?? 2.6).toFixed(2) + '), ab = smoothstep(.45, 1., vDp); diffuseColor.rgb = mix(mix(uShal * .95, uDeep * .6, f), vec3(.002, .006, .014), ab); diffuseColor.a = mix(.42, .9, f) + ab * .08 + smoothstep(.01, .0, vDp) * .15;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
  { float al = vWp.x + vWp.z, shaft = smoothstep(.55, .9, vn(vec2((al + vDp * 2.) * 1.6 + uTime * .05, 1.7))) * smoothstep(.5, .85, vn(vec2((al + vDp * 2.) * 3.7 - uTime * .04, 4.2)) + .25);
-   totalEmissiveRadiance += mix(mix(uShal * .45, uDeep * .5, f), vec3(0.), ab) * .6 * uSun + uShal * shaft * (1. - f) * .9 * uSun + vec3(.7, .95, .95) * smoothstep(.035, .0, vDp) * .55 * uSun + uShal * smoothstep(.25, .0, vDp) * .35 * uSun; }`); };
+   totalEmissiveRadiance += mix(mix(uShal * .45, uDeep * .5, f), vec3(0.), ab) * .6 * uSun + uShal * shaft * (1. - f) * .9 * uSun + vec3(.7, .95, .95) * smoothstep(.01, .0, vDp) * .3 * uSun + uShal * smoothstep(.12, .0, vDp) * .12 * uSun; }`); };
   ctx.steps.push(() => { WU.uSunV.value.copy(ctx.cur.dir).transformDirection(ctx.camera.matrixWorldInverse); });
   return { mesh, mat, WU, wallMat, depthTex };
 }

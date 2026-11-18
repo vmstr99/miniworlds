@@ -46,10 +46,11 @@ async function load(id, first) {
   await E.waitReady();
   // warm everything up off screen: compile every material (hidden ones too) with its shadow and transmission variants and
   // upload every texture, so the world rises without a single hitch
-  { const hidden = []; ctx.island.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } }); ctx.island.scale.setScalar(1);
-    if (E.renderer.compileAsync) { try { await Promise.race([E.renderer.compileAsync(E.scene, E.camera), new Promise(r => setTimeout(r, 2500))]); } catch (e) {} }
-    E.composer.renderToScreen = false; E.step(0); E.composer.render(); E.composer.render(); E.composer.renderToScreen = true; // the real pipeline, off screen
-    hidden.forEach(o => { o.visible = false; }); ctx.island.scale.setScalar(.001); await frame(); }
+  // (each reveal is synchronous: the render loop must never see the new world at full size before it rises)
+  { const hidden = [], show = on => { if (on) { ctx.island.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } }); ctx.island.scale.setScalar(1); } else { hidden.forEach(o => { o.visible = false; }); hidden.length = 0; ctx.island.scale.setScalar(.001); } };
+    let pr = null; show(true); try { if (E.renderer.compileAsync) pr = E.renderer.compileAsync(E.scene, E.camera); } catch (e) {} show(false);
+    if (pr) { try { await Promise.race([pr, new Promise(r => setTimeout(r, 2500))]); } catch (e) {} }
+    show(true); E.composer.renderToScreen = false; E.step(0); E.composer.render(); E.composer.render(); E.composer.renderToScreen = true; show(false); await frame(); }
   E.ready = true; E.spinDeg = 0; history.replaceState(null, '', location.pathname + location.search.replace(/([?&])world=[^&]*&?/, '$1').replace(/[?&]$/, '') + '#' + id);
   document.title = meta.name + ' · Wonder Deck HD'; cap(meta); count++; store.set('k9hd-worlds', count); updCount(); say(meta.name.toUpperCase()); deck.ledAll();
   if (!first) deck.sfx.arrive();
