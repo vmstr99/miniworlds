@@ -327,6 +327,44 @@ export function makeSpray(ctx, n = 9000) {
   return S;
 }
 
+/* ---------------- waterfalls: a streaked, foaming curtain bent on a falling arc, a churning pool and boiling mist ----------------
+   o: { x, z, ry (the direction the water leaves the lip), top, bottom, width, reach, tint, lights (night floodlights, a uniform),
+   flow (a uniform; above 1 the falls swell, widen and turn to flood brown) } */
+export function makeFalls(ctx, o) {
+  const { island, U } = ctx, FU = { uT: U.uTime, uSun: U.uSun, uGlow: U.uGlow, uLights: o.lights || { value: 0 }, uFlow: o.flow || { value: 1 }, uPx: { value: 1 } };
+  const tint = (o.tint || [.78, .88, .95]).map(v => v.toFixed(3)).join(','), flood = (o.flood || [.62, .5, .34]).map(v => v.toFixed(3)).join(','), W = o.width ?? .5, drop = o.top - o.bottom, reach = o.reach ?? .26;
+  const n = 30, g = new THREE.PlaneGeometry(1, 1, 12, n), P = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < P.count; i++) { const u = uv.getX(i), f = 1 - uv.getY(i); P.setXYZ(i, (u - .5) * W * (1 + .3 * f), o.top + .005 - f * (drop + .02), -.06 + reach * Math.sqrt(f) + .02 * Math.sin(u * 17. + f * 3.)); }
+  const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }';
+  const curtM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: FU, vertexShader: VS,
+    fragmentShader: `uniform float uT, uSun, uGlow, uLights, uFlow; varying vec2 vUv;\n${GLSL_NOISE}
+      void main(){ float f = 1. - vUv.y, u = (vUv.x - .5) / mix(1., 1.35, clamp(uFlow - 1., 0., 1.)) + .5; if (u < 0. || u > 1.) discard; float sp = mix(1., 1.5, clamp(uFlow - 1., 0., 1.));
+        float s1 = vn(vec2(u * 34., f * 2.2 - uT * 2.4 * sp)), s2 = vn(vec2(u * 85. + 3., f * 5. - uT * 4.1 * sp)), s3 = vn(vec2(u * 12., f * 1.2 - uT * 1.6 * sp));
+        float streak = smoothstep(.25, .85, s1 * .6 + s2 * .4), edge = smoothstep(0., .1, u) * smoothstep(1., .9, u);
+        float foam = smoothstep(.62, 1., f) * (.6 + .4 * s2), a = (.38 + .5 * streak + .35 * foam + .2 * (uFlow - 1.)) * edge * (.85 + .15 * s3);
+        vec3 lit = mix(vec3(${tint}), vec3(${flood}), clamp((uFlow - 1.) * .8, 0., .8)) * (.22 + .9 * uSun) * (.75 + .5 * streak);
+        vec3 fl = mix(vec3(.25, .95, 1.), vec3(1., .3, .75), smoothstep(.2, .8, u + .25 * sin(uT * .3))) * uGlow * uLights * (.25 + .75 * f) * .55;
+        gl_FragColor = vec4(lit + fl * (.6 + .6 * streak) + vec3(1.) * foam * (.3 + .5 * uSun), clamp(a, 0., .95)); }` });
+  const curt = new THREE.Mesh(g, curtM); curt.position.set(o.x, 0, o.z); curt.rotation.y = o.ry; curt.renderOrder = 3; island.add(curt);
+  const dx = Math.sin(o.ry), dz = Math.cos(o.ry), bx = o.x + dx * (reach + .04), bz = o.z + dz * (reach + .04), wl = o.bottom;
+  const foamM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: FU, vertexShader: VS,
+    fragmentShader: `uniform float uT, uSun, uGlow, uLights, uFlow; varying vec2 vUv;\n${GLSL_NOISE}
+      void main(){ vec2 q = vUv - .5; float r = length(q) * 2., a = atan(q.y, q.x); float n = vn(vec2(a * 3. + uT * .4, r * 6. - uT * 1.4)) * .6 + vn(q * 26. + uT * .8) * .4;
+        float m = smoothstep(1., .25, r) * smoothstep(.3, .7, n + .35 * (1. - r) + .15 * (uFlow - 1.)); gl_FragColor = vec4(mix(vec3(.85, .93, 1.), vec3(${flood}) * 1.3, clamp((uFlow - 1.) * .6, 0., .6)) * (.25 + .8 * uSun) + vec3(.3, .9, 1.) * uGlow * uLights * .25, m * .8); }` });
+  const foam = new THREE.Mesh(new THREE.CircleGeometry(o.foamR ?? .5, 40).rotateX(-Math.PI / 2), foamM); foam.position.set(bx, wl + .012, bz); foam.renderOrder = 3; island.add(foam);
+  const NM = Math.round((o.mist ?? 220) * QN), mg = new THREE.BufferGeometry(), mp = new Float32Array(NM * 3), ma = new Float32Array(NM * 2); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3).setUsage(THREE.DynamicDrawUsage)); mg.setAttribute('ma', new THREE.BufferAttribute(ma, 2).setUsage(THREE.DynamicDrawUsage)); mg.setDrawRange(0, 0);
+  const mm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: FU,
+    vertexShader: 'attribute vec2 ma; uniform float uPx; varying float vA; void main(){ vA = ma.x; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(uPx * ma.y / -mv.z, 1.5, 260.); }',
+    fragmentShader: 'uniform float uSun, uGlow, uLights; varying float vA; void main(){ float r2 = dot(gl_PointCoord - .5, gl_PointCoord - .5) * 4.; if (r2 > 1.) discard; gl_FragColor = vec4(vec3(.8, .9, .96) * (.2 + .7 * uSun) + vec3(.25, .8, 1.) * uGlow * uLights * .2, exp(-r2 * 3.) * vA); }' });
+  const mist = new THREE.Points(mg, mm); mist.frustumCulled = false; mist.renderOrder = 4; island.add(mist);
+  const L = []; ctx.steps.push(dt => { FU.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360)); const fl = FU.uFlow.value, rise = o.rise ?? 1;
+    for (let k = 0; k < Math.floor(70 * QN * fl * dt + R()); k++) if (L.length < NM) L.push({ x: bx - dx * .1 + rnd(-.25, .25) * W * 2, y: wl + rnd(0, .1), z: bz - dz * .1 + rnd(-.12, .12), vx: dx * rnd(.04, .14) + rnd(-.05, .05), vy: rnd(.08, .22) * rise, vz: dz * rnd(.04, .14) + rnd(-.05, .05), age: 0, life: rnd(2, 4) * rise, s: rnd(.25, .6) * (o.mistS ?? 1) });
+    let i = 0; for (let k = L.length - 1; k >= 0; k--) { const p = L[k]; p.age += dt; if (p.age > p.life) { L[k] = L[L.length - 1]; L.pop(); continue; } p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy *= .99; }
+    for (const p of L) { const f = p.age / p.life; mp[i * 3] = p.x; mp[i * 3 + 1] = p.y; mp[i * 3 + 2] = p.z; ma[i * 2] = (o.mistA ?? .16) * Math.min(1, p.age * 3) * (1 - f); ma[i * 2 + 1] = p.s * (1 + f * 1.5); i++; }
+    mg.setDrawRange(0, i); mg.attributes.position.needsUpdate = mg.attributes.ma.needsUpdate = true; });
+  return { curt, foam, mist, U: FU, base: new THREE.Vector3(bx, wl, bz) };
+}
+
 /* ---------------- audio: each world gets a bus on the engine's shared context ---------------- */
 export function makeAudio() {
   const AUD = E.AUD, w = E.world, A = { ctx: null, srcs: [] };

@@ -4,7 +4,7 @@
    inside the breakwater, and on its end a bronze colossus holding up a ring of light. Under the bay, where the cut walls
    fall away into indigo, a capsized freighter lies with its propeller turned to the surface.
    EVENT: a blackout, a power wave rolling out from the colossus, then a searchlight show. */
-import { THREE, mergeGeometries, TAU, R, rnd, pick, clamp, lerp, sm, Q, LO, QN, makeNoise, GLSL_NOISE, TRI, createEngine, makeHeightfield, DZ, SLAB, makeWalls, wallMaterial, makeWater, makeAudio, makeSnowfall, underwater, palmGeometry, sway } from './core.js';
+import { THREE, mergeGeometries, TAU, R, rnd, pick, clamp, lerp, sm, Q, LO, QN, makeNoise, GLSL_NOISE, TRI, createEngine, makeHeightfield, DZ, SLAB, makeWalls, wallMaterial, makeWater, makeAudio, makeSnowfall, underwater, palmGeometry, sway, makeFalls } from './core.js';
 
 export const META = { name: 'Neon Shore', line: 'Glass towers and art-deco spires, a suspension bridge over the estuary, a marina, and a bronze colossus holding up a ring of light. Press Light show.', era: 'A beach city · one in the morning', ev: 'Light show', preset: { time: 3, clouds: 1, rain: 0, wind: 1, glow: 3, life: 2 }, birds: 'gull' };
 
@@ -188,46 +188,16 @@ export function build() {
 
   /* the falls: the river runs along the top of the bluff and slides off its edge in a curtain, floodlit at night, into a
      churning plunge pool wrapped in mist */
-  const fallL = new THREE.PointLight('#7fe8ff', 0, 3.2, 1.5); const MIST = { list: [] };
-  { const dir = RIV[1].clone().sub(RIV[0]).normalize(), ry = Math.atan2(dir.x, dir.y), FU = { uT: U.uTime, uSun: U.uSun, uGlow: U.uGlow, uPow: CU.uPow };
+  const fallL = new THREE.PointLight('#7fe8ff', 0, 3.2, 1.5);
+  { const dir = RIV[1].clone().sub(RIV[0]).normalize(), ry = Math.atan2(dir.x, dir.y);
     const flowM = new THREE.MeshStandardMaterial({ color: '#2a6a78', roughness: .06, metalness: .1, normalMap: tex('water_nor.jpg', false), normalScale: new THREE.Vector2(.5, .5), transparent: true, opacity: .9 }); MATS.push(flowM);
     flowM.onBeforeCompile = sh => { sh.uniforms.uT = U.uTime; sh.fragmentShader = 'uniform float uT;\n' + sh.fragmentShader.replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', 'vec2 fuv = vNormalMapUv * vec2(1.5, 4.); vec3 mapN = normalize((texture2D(normalMap, fuv + vec2(0., uT * .35)).xyz * 2. - 1.) + (texture2D(normalMap, fuv * 1.7 + vec2(.3, uT * .55)).xyz * 2. - 1.));'); };
     const z0 = -5, L = Math.hypot(FALL[0] - RIV[0].x, FALL[1] - z0) + .04, mid = [(FALL[0] + lerp(RIV[0].x, FALL[0], -.0)) / 2, (FALL[1] + z0) / 2];
     const up = new THREE.Mesh(new THREE.PlaneGeometry(.78, L).rotateX(-Math.PI / 2), flowM); up.position.set((RIV[0].x + FALL[0]) / 2, RUP, mid[1]); up.rotation.y = ry; up.receiveShadow = true; island.add(up);
     const lip = new THREE.Mesh(new THREE.PlaneGeometry(.78, RUP - (RUP - .2)), new THREE.MeshStandardMaterial({ color: '#1a4a5a', roughness: .2, transparent: true, opacity: .85 })); MATS.push(lip.material); lip.position.set(RIV[0].x, RUP - .1, -4.995); lip.rotation.y = Math.PI; island.add(lip);
-    // the curtain: a ribbon bent on a falling arc, streaked and foaming, lit by the moon and by the floodlights in the pool
-    const n = 30, cg2 = new THREE.PlaneGeometry(1, 1, 12, n), P = cg2.attributes.position, uv = cg2.attributes.uv, Wf = .56, drop = RUP + .02;
-    for (let i = 0; i < P.count; i++) { const u = uv.getX(i), f = 1 - uv.getY(i); P.setXYZ(i, (u - .5) * Wf * (1 + .3 * f), RUP + .005 - f * drop, -.06 + .26 * Math.sqrt(f) + .02 * Math.sin(u * 17. + f * 3.)); }
-    cg2.computeVertexNormals();
-    const curtM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: FU,
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-      fragmentShader: `uniform float uT, uSun, uGlow, uPow; varying vec2 vUv;\n${GLSL_NOISE}
-        void main(){ float f = 1. - vUv.y, u = vUv.x; float s1 = vn(vec2(u * 34., f * 2.2 - uT * 2.4)), s2 = vn(vec2(u * 85. + 3., f * 5. - uT * 4.1)), s3 = vn(vec2(u * 12., f * 1.2 - uT * 1.6));
-          float streak = smoothstep(.25, .85, s1 * .6 + s2 * .4), edge = smoothstep(0., .1, u) * smoothstep(1., .9, u) * smoothstep(0., .04, vUv.y + .0);
-          float foam = smoothstep(.62, 1., f) * (.6 + .4 * s2), a = (.38 + .5 * streak + .35 * foam) * edge * (.85 + .15 * s3);
-          vec3 lit = vec3(.78, .88, .95) * (.22 + .9 * uSun) * (.75 + .5 * streak);
-          vec3 flood = mix(vec3(.25, .95, 1.), vec3(1., .3, .75), smoothstep(.2, .8, u + .25 * sin(uT * .3))) * uGlow * uPow * (.25 + .75 * f) * .55;
-          gl_FragColor = vec4(lit + flood * (.6 + .6 * streak) + vec3(1.) * foam * (.3 + .5 * uSun), clamp(a, 0., .95)); }` });
-    const curt = new THREE.Mesh(cg2, curtM); curt.position.set(FALL[0], 0, FALL[1]); curt.rotation.y = ry; curt.renderOrder = 3; island.add(curt);
-    // churning foam in the pool
-    const foamM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: FU, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-      fragmentShader: `uniform float uT, uSun, uGlow, uPow; varying vec2 vUv;\n${GLSL_NOISE}
-        void main(){ vec2 q = vUv - .5; float r = length(q) * 2., a = atan(q.y, q.x); float n = vn(vec2(a * 3. + uT * .4, r * 6. - uT * 1.4)) * .6 + vn(q * 26. + uT * .8) * .4;
-          float m = smoothstep(1., .25, r) * smoothstep(.3, .7, n + .35 * (1. - r)); gl_FragColor = vec4(vec3(.85, .93, 1.) * (.25 + .8 * uSun) + vec3(.3, .9, 1.) * uGlow * uPow * .25, m * .8); }` });
-    const foam = new THREE.Mesh(new THREE.CircleGeometry(.5, 40).rotateX(-Math.PI / 2), foamM); foam.position.set(FALL[0] + dir.x * .3, .012, FALL[1] + dir.y * .3); foam.renderOrder = 3; island.add(foam);
-    fallL.position.set(FALL[0] + dir.x * .45, .25, FALL[1] + dir.y * .45); island.add(fallL);
-    // mist: soft puffs boiling up off the pool and drifting downstream
-    const NM = Math.round(220 * QN), mg = new THREE.BufferGeometry(), mp = new Float32Array(NM * 3), ma = new Float32Array(NM * 2); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3).setUsage(THREE.DynamicDrawUsage)); mg.setAttribute('ma', new THREE.BufferAttribute(ma, 2).setUsage(THREE.DynamicDrawUsage)); mg.setDrawRange(0, 0);
-    const mm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: Object.assign({ uPx: { value: 1 } }, FU),
-      vertexShader: 'attribute vec2 ma; uniform float uPx; varying float vA; void main(){ vA = ma.x; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(uPx * ma.y / -mv.z, 1.5, 260.); }',
-      fragmentShader: 'uniform float uSun, uGlow, uPow; varying float vA; void main(){ float r2 = dot(gl_PointCoord - .5, gl_PointCoord - .5) * 4.; if (r2 > 1.) discard; gl_FragColor = vec4(vec3(.8, .9, .96) * (.2 + .7 * uSun) + vec3(.25, .8, 1.) * uGlow * uPow * .2, exp(-r2 * 3.) * vA); }' });
-    const mist = new THREE.Points(mg, mm); mist.frustumCulled = false; mist.renderOrder = 4; island.add(mist);
-    Object.assign(MIST, { mg, mp, ma, mm, NM, dir, base: new THREE.Vector3(FALL[0] + dir.x * .22, .02, FALL[1] + dir.y * .22) }); }
-  const stepMist = dt => { const M = MIST; M.mm.uniforms.uPx.value = cm.uniforms.uPx.value; fallL.intensity = U.uGlow.value * CU.uPow.value * 1.6;
-    for (let k = 0; k < Math.floor(70 * QN * dt + R()); k++) if (M.list.length < M.NM) M.list.push({ x: M.base.x + rnd(-.25, .25), y: M.base.y + rnd(0, .1), z: M.base.z + rnd(-.12, .12), vx: M.dir.x * rnd(.04, .14) + rnd(-.05, .05), vy: rnd(.08, .22), vz: M.dir.y * rnd(.04, .14) + rnd(-.05, .05), age: 0, life: rnd(2, 4), s: rnd(.25, .6) });
-    let i = 0; for (let k = M.list.length - 1; k >= 0; k--) { const p = M.list[k]; p.age += dt; if (p.age > p.life) { M.list[k] = M.list[M.list.length - 1]; M.list.pop(); continue; } p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy *= .99; }
-    for (const p of M.list) { const f = p.age / p.life; M.mp[i * 3] = p.x; M.mp[i * 3 + 1] = p.y; M.mp[i * 3 + 2] = p.z; M.ma[i * 2] = .16 * Math.min(1, p.age * 3) * (1 - f); M.ma[i * 2 + 1] = p.s * (1 + f * 1.5); i++; }
-    M.mg.setDrawRange(0, i); M.mg.attributes.position.needsUpdate = M.mg.attributes.ma.needsUpdate = true; };
+    const F = makeFalls(ctx, { x: FALL[0], z: FALL[1], ry, top: RUP, bottom: 0, width: .56, reach: .26, lights: CU.uPow, foamR: .5 });
+    fallL.position.set(FALL[0] + dir.x * .45, .25, FALL[1] + dir.y * .45); island.add(fallL); }
+  const stepMist = () => { fallL.intensity = U.uGlow.value * CU.uPow.value * 1.6; };
 
   /* the marina and the breakwater, and the colossus at its end */
   const rockM = new THREE.MeshStandardMaterial({ map: T.rock, normalMap: T.rockN, color: '#8a8580', roughness: .9 }); MATS.push(rockM);
@@ -329,7 +299,7 @@ export function build() {
     score.push([END, t => SY.sub(t, .8)]); score.sort((a, b) => a[0] - b[0]); }
   let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {}, si: 0 }; if (AU.ctx) SY.start(0); }, get evOn() { return !!ev; } };
   const NEONP = [(t) => .9 + .1 * Math.sin(t * 120), (t, dt) => R() < dt * 1.5 ? .1 : 1, t => .55 + .45 * Math.sin(t * 2.2), t => Math.sin(t * 3.4) > -.2 ? 1 : .08, (t) => (Math.sin(t * 37) > .3 && Math.sin(t * 5.1) > -.6) ? 1 : .25, () => 1];
-  ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360)); stepMist(dt);
+  ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360)); stepMist();
     const P = CU.uPow.value, G = .4 + U.uGlow.value * .5;
     beaconM.emissiveIntensity = (Math.sin(t * 3.1) > .6 ? 7 : .2) * P * G; strobeM.emissiveIntensity = ((t % 1.6) < .05 || ((t % 1.6) > .18 && (t % 1.6) < .23) ? 14 : 0) * P * G;
     ringL.intensity = ringM.emissiveIntensity * 1.6 * P;

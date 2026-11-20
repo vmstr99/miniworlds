@@ -6,8 +6,8 @@ import { initEngine, Q, $, sm, clamp, LO } from './core.js';
 import { createFX } from './fx.js';
 import { createDeck, KEYDEF } from './deck.js';
 
-const WORLDS = { palau: () => import('./palau.js'), vesuvius: () => import('./vesuvius.js'), alps: () => import('./alps.js'), dunes: () => import('./dunes.js'), city: () => import('./city.js') };
-const ORDER = ['palau', 'vesuvius', 'alps', 'dunes', 'city'], BASE = { time: 1, clouds: 1, rain: 0, wind: 1, glow: 1, life: 2 };
+const WORLDS = { palau: () => import('./palau.js'), vesuvius: () => import('./vesuvius.js'), alps: () => import('./alps.js'), dunes: () => import('./dunes.js'), city: () => import('./city.js'), amazon: () => import('./amazon.js') };
+const ORDER = ['palau', 'vesuvius', 'alps', 'dunes', 'city', 'amazon'], BASE = { time: 1, clouds: 1, rain: 0, wind: 1, glow: 1, life: 2 };
 let deck = null, busy = false, cur = null, meta = null, queued = false;
 const E = initEngine({ pointerFilter: e => deck && deck.pointerFilter(e) });
 createFX(E);
