@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Wonder Deck HD</title>
+<meta name="description" content="Nine keys and six photoreal miniature worlds: Palau's Rock Islands, Vesuvius in 79 AD, an alpine fireworks night, Namib dunes with a cathedral cut into the rock, a neon beach city with a waterfall, and a lost 747 in the Amazon below Inca terraces.">
+<meta name="theme-color" content="#1c2430">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=VT323&display=swap">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" crossorigin>
+<style>
+:root{--ink:#f6f1e8;--amber:#e8842c;--rust:#b4502a;--brown:#6e4429;--room:#9cb8d4;--shell:rgba(24,26,30,.5);--glass:#0b0f11;--vfd:#86f5df;--vfd-dim:#5aa196;
+  --display:"Chakra Petch","Avenir Next Condensed",sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;--seg:"VT323","IBM Plex Mono",ui-monospace,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--room:#1c2430}}
+:root[data-theme="dark"]{--room:#1c2430}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--room);color:var(--ink);font-family:var(--display);-webkit-font-smoothing:antialiased}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.hud{position:fixed;z-index:5;display:flex;gap:10px;align-items:center}
+.plate{top:max(14px,env(safe-area-inset-top));left:max(14px,env(safe-area-inset-left));gap:12px;padding:9px 14px 9px 11px;border-radius:16px;background:var(--shell);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12)}
+.stripes{display:flex;flex-direction:column;gap:3px;width:34px}
+.stripes i{display:block;height:5px;border-radius:3px}
+.stripes i:nth-child(1){background:var(--brown)}.stripes i:nth-child(2){background:var(--rust)}.stripes i:nth-child(3){background:var(--amber)}
+.plate h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.plate p{margin:4px 0 0;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;opacity:.7}
+.meters{top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right))}
+.vfd{background:var(--glass);border-radius:10px;padding:6px 12px 4px;font:22px/1 var(--seg);color:var(--vfd);text-shadow:0 0 6px rgba(134,245,223,.55);box-shadow:inset 0 2px 6px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.vfd small{font-size:15px;color:var(--vfd-dim);text-shadow:none;margin-right:6px}
+#readout{min-width:13ch;text-align:center}
+.switch{display:flex;align-items:center;gap:10px;color:var(--ink);background:var(--shell);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 12px;cursor:pointer;font:600 12px var(--display);letter-spacing:.12em;text-transform:uppercase}
+.switch .track{width:34px;height:18px;border-radius:9px;background:var(--glass);position:relative;box-shadow:inset 0 2px 4px rgba(0,0,0,.5)}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber);transition:transform .2s}
+.switch[aria-pressed="false"] .track::after{transform:translateX(16px);background:#777;box-shadow:none}
+.switch:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.plaque{left:max(32px,env(safe-area-inset-left));top:42%;transform:translateY(calc(-50% + 12px));flex-direction:column;align-items:flex-start;gap:10px;width:min(310px,25vw);padding:2px 0 4px 18px;border-left:1px solid color-mix(in srgb,var(--amber) 75%,transparent);opacity:0;transition:opacity 1s ease,transform 1s ease;pointer-events:none;text-shadow:0 1px 14px rgba(0,0,0,.5),0 0 2px rgba(0,0,0,.35)}
+.plaque.show{opacity:1;transform:translateY(-50%)}
+.plaque h2{margin:0;font-size:clamp(24px,2.5vw,34px);font-weight:600;line-height:1.05;text-wrap:balance}
+.plaque p{margin:0;font:12.5px/1.65 var(--mono);opacity:.86;max-width:34ch;text-wrap:pretty}
+.plaque small{font:11px var(--mono);opacity:.66}
+#loader{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;overflow:hidden;background:linear-gradient(to top,#f6c9a8 0%,#eaa99c 20%,#b98fbe 48%,#56508f 100%);transition:opacity .8s,visibility .8s}
+#loader::before{content:"";position:absolute;left:50%;bottom:-14vmin;width:30vmin;height:30vmin;margin-left:-15vmin;border-radius:50%;background:radial-gradient(circle,#fff6e6 0%,#ffe0b8 32%,rgba(255,190,130,.55) 48%,rgba(255,170,120,0) 70%);animation:sunrise 9s cubic-bezier(.2,.7,.25,1) forwards}
+#loader>*{position:relative}
+#loader.done{opacity:0;visibility:hidden}
+.ld-grid{display:grid;grid-template-columns:repeat(3,22px);gap:8px;padding:14px;border-radius:16px;background:rgba(40,32,52,.32);box-shadow:0 10px 30px rgba(40,20,40,.25);transform:rotateX(50deg) rotateZ(45deg)}
+.ld-grid i{display:block;width:22px;height:22px;border-radius:6px;background:rgba(255,240,225,.28);animation:ld 1.35s ease-in-out infinite}
+.ld-grid i:nth-child(2){animation-delay:.15s}.ld-grid i:nth-child(3){animation-delay:.3s}.ld-grid i:nth-child(6){animation-delay:.45s}.ld-grid i:nth-child(9){animation-delay:.6s}
+.ld-grid i:nth-child(8){animation-delay:.75s}.ld-grid i:nth-child(7){animation-delay:.9s}.ld-grid i:nth-child(4){animation-delay:1.05s}.ld-grid i:nth-child(5){animation-delay:1.2s;background:var(--amber)}
+@keyframes ld{0%,100%{background:rgba(255,240,225,.28)}20%{background:var(--amber);box-shadow:0 0 12px var(--amber)}}
+#loader span{font:11px var(--mono);letter-spacing:.24em;text-transform:uppercase;color:#fff4e6}
+#loader i.bar{display:block;width:180px;height:2px;background:rgba(255,255,255,.25);border-radius:2px;overflow:hidden}
+#loader i.bar b{display:block;height:100%;width:0;background:#fff4e6;transition:width .3s}
+@keyframes sunrise{from{transform:translateY(8vmin)}to{transform:translateY(-30vh)}}
+@media (max-width:820px){.plaque{top:calc(max(14px,env(safe-area-inset-top)) + 58px);transform:translateY(8px);width:calc(100vw - 56px);gap:5px}.plaque.show{transform:none}.plaque h2{font-size:21px}.plaque p{font-size:11.5px;max-width:48ch}}
+@media (max-width:640px){.plate p,#readout,.vfd small,.switch span:last-child{display:none}.plaque p{display:none}}
+@media (prefers-reduced-motion: reduce){#loader::before,.ld-grid i{animation:none}.plaque{transition:opacity .4s}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl" tabindex="0" aria-label="Wonder Deck HD. A miniature world above a nine-key deck. Press the keys (or T, C, R, W, Space, G, E, L, S), drag to orbit, pinch or scroll to zoom."></canvas>
+<div id="sab" aria-hidden="true" style="position:fixed;bottom:0;left:0;padding-bottom:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none"></div>
+<header class="hud plate"><div class="stripes" aria-hidden="true"><i></i><i></i><i></i></div><div><h1>Wonder Deck HD</h1><p>Miniature worlds · nine keys</p></div></header>
+<div class="hud meters">
+  <div class="vfd" id="readout" aria-live="polite">LOADING</div>
+  <div class="vfd"><small>WORLDS</small><span id="count">0000</span></div>
+  <button class="switch" id="mute" aria-pressed="true"><span class="track"></span><span id="muteLbl">Sound on</span></button>
+</div>
+<div class="hud plaque" id="plaque" aria-live="polite"><h2 id="cn"></h2><p id="cl"></p><small id="ce"></small></div>
+<div id="loader" role="status"><div class="ld-grid" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span id="ldt">Loading the world</span><i class="bar"><b id="ldb"></b></i></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

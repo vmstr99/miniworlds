@@ -25,7 +25,9 @@ on screen, and the dots and LED on each key show its current level:
 | **WIND** (W) calm → gale | **WORLD** (Space) next scene | **GLOW** (G) windows, lamps, neon |
 | **EVENT** (E) replay the scene's big moment | **LIFE** (L) birds, traffic | **SPIN** (S) turn 90° |
 
-Keys 1–9 also work, in reading order. Each key shows an engraved icon that changes with its level (sun → sunset → moon, a cloud that fills and gets a lightning bolt, more raindrops, more gust lines, a brighter bulb). Each world loads its own starting settings, and the
+Keys press down while held and spring back with a click. Drag the scene to turn the world (sideways) and tilt it
+toward you (up and down); pinch or scroll to zoom, twist two fingers to turn; double-tap to reset. Arrow keys and
++/− do the same from the keyboard. Keys 1–9 also work, in reading order. Each key shows an engraved icon that changes with its level (sun → sunset → moon, a cloud that fills and gets a lightning bolt, more raindrops, more gust lines, a brighter bulb). Each world loads its own starting settings, and the
 scene stays on screen until you press WORLD again.
 
 ## Worlds
@@ -33,9 +35,13 @@ scene stays on screen until you press WORLD again.
 Five worlds, each built on new procedural terrain on every press: Vesuvius in 79 AD (the Gran Cono
 with Monte Somma's broken rim on its far-left flank, a Roman villa in fragments on a tuff terrace,
 vineyards, umbrella pines, galleys in a deep bay) · an alpine valley village under snow peaks, with a
-river gorge, a lake and fireworks · red-rock high plains with a mesa, a butte, a creek canyon, a bison
-herd and a tornado · Koh Phi Phi lagoon with long-tail boats and a sunset, moonrise and rising tide ·
-a neon beach city: art-deco setback towers with gold bands and lit crowns, streamline hotels and palms on the
+river gorge, a lake and fireworks · a sea of dunes with a star dune, a sandstone jebel, an oasis, half-buried ruins
+(a colossal head, an obelisk, a colonnade, a gateway) and circling vultures, where the EVENT is a magnitude-nine
+earthquake: the great dune drains into a sunken court around a lost Roman cathedral (columned portico and carved pediment,
+twin bell towers, a nave with a rose window, a ribbed dome on a windowed drum, an apse), sand pours from every carved
+window, the camera moves in, and a few seconds later the sand flows back and buries it again · Koh Phi Phi lagoon with long-tail boats and a sunset, moonrise and rising tide ·
+a neon beach city: slabs, podium and setback towers, round and octagonal glass towers, rooftop tanks, helipads
+and masts with blinking beacons, neon blade signs, twisting towers, tiered spires, stacked blocks, sky bridges and glass pyramid crowns, art-deco towers with gold bands and lit crowns, streamline hotels and palms on the
 promenade, a suspension bridge across a river estuary, a marina of moored yachts, and a colossal bronze figure on the
 breakwater holding up a ring of light. Water reflects the sky, cumulus clouds drift with the
 wind (a gale clears them), Cappadocia-style balloons float near the lens, and the camera adds
@@ -57,7 +63,10 @@ Surfaces are textured in the shader from object-space position (ground mottling,
 partings and grain), so the detail turns with the world on SPIN. Where the cut passes through the sea, a lake or a
 canal, the wall is clear water whose lower edge is the exact seabed line: it is clear near the surface and darkens with
 depth, submerged ground takes on the water's colour, and you can see plankton drifting (faintly bioluminescent at
-night) and schools of fish circling inside. The palettes stay with natural earth tones.
+night) and schools of fish and jellyfish drifting inside, with caustics flickering on the seabed and light shafts
+falling through the walls. Each world's water is its own blue (cobalt, glacial turquoise, sapphire, midnight indigo),
+and the waterline sloshes against the edges as if held in an invisible glass case. The palettes stay with natural
+earth tones.
 
 Each world is centred automatically from its silhouette (sampled terrain heights, the slab's base corners and any
 tall objects in `c.tall`), turned to the current spin, and shown at 80% of its `frame.zoom`, smaller if the screen
@@ -70,7 +79,8 @@ ash climbs into an umbrella-pine cloud, lightning runs through it, bombs arc out
 runs to the sea, and pyroclastic flows pour downhill and out over the water. The camera pulls back
 and up to frame it, and the sky turns ember red.
 
-A new world arrives calm and stays. Loud action (eruption, fireworks, tornado, the city's light cascade, the Phi Phi sunset with rising tide) only runs when you press EVENT (`B0`, `B1` in `app.js`). WORLD collapses the current scene in 0.45 s.
+A new world arrives calm and stays. Loud action (eruption, fireworks, the earthquake, the city's blackout, power wave and
+searchlight show, the Phi Phi sunset with rising tide) only runs when you press EVENT (`B0`, `B1` in `app.js`). WORLD collapses the current scene in 0.45 s.
 
 ## Adding a world
 
