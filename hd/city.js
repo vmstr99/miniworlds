@@ -23,14 +23,19 @@ export function build() {
   const shoreD = (x, z) => (x + z) / 1.414 - 1.35 + N.fbm(x * .35 + 2, z * .35) * .45;
   const BW = [new THREE.Vector2(.85, 1.95), new THREE.Vector2(3.15, 3.35)], BE = [3.2, 3.38];
   const bwD = (x, z) => { const a = BW[0], b = BW[1], ab = b.clone().sub(a), p = new THREE.Vector2(x, z), t = clamp(p.clone().sub(a).dot(ab) / ab.lengthSq(), 0, 1); return p.distanceTo(a.clone().addScaledVector(ab, t)); };
+  // the bluff: a terrace along the back edge, its face a sheer cliff, the river running in a notch on top and falling over the edge
+  const BLUFF = 1.38, RUP = 1.06, cliffZ = x => -4.12 + .16 * Math.sin(x * 1.3 + .6) + .1 * N.fbm(x * .9, 7.3), cliffK = (x, z) => sm((cliffZ(x) - z) / .1) * sm((x + 1.9) / .7);
+  const FALL = (() => { const a = RIV[0], b = RIV[1]; let t = .5; for (let k = 0; k < 30; k++) { const x = lerp(a.x, b.x, t), z = lerp(a.y, b.y, t); t += (cliffZ(x) - z) / (b.y - a.y) * .8; } return [lerp(a.x, b.x, t), lerp(a.y, b.y, t)]; })();
   function height(u, v) { const x = u * H5, z = v * H5; let h = .3 + N.fbm(u * 2, v * 2) * .04 + 1.5 * Math.exp(-((x + 4.1) ** 2 + (z + 4.0) ** 2) / 3.4) + .5 * Math.exp(-((x + 1.2) ** 2 + (z + 4.6) ** 2) / 1.2);
     const sd = shoreD(x, z); h = lerp(h, .12 - sd * .06, sm(sd / .45)); h = lerp(h, -.7 - sd * .25, sm((sd - .55) / .5)); h = lerp(h, -3.7 + N.fbm(u * 3, v * 3) * .25, sm((sd - 2.35) / .5));
     const rd = riverD(x, z); h = lerp(h, Math.min(h, -.85), sm((.36 - rd) / .14)); h = Math.min(h, lerp(h, .14, sm((.5 - rd) / .1)));
     const bd = bwD(x, z); if (sd > .2) h = Math.max(h, lerp(.2, h, sm((bd - .1) / .2)) + N.ridge(x * 9, z * 9, 3) * .04 * sm((.25 - bd) / .1));
     { const d = Math.hypot(x - BE[0], z - BE[1]); h = Math.max(h, lerp(.24, h, sm((d - .3) / .25))); }
+    { const k = cliffK(x, z); if (k > 0) { let hb = BLUFF + N.fbm(x * 1.7, z * 1.7) * .06 + N.ridge(x * 6, z * 6, 3) * .03 * (1 - sm((cliffZ(x) - z) / .4)); hb = lerp(hb, RUP - .2, sm((.3 - rd) / .1)); h = lerp(h, Math.max(h, hb), k); } }
+    { const d = Math.hypot(x - FALL[0], z - FALL[1] - .32); h = lerp(h, Math.min(h, -1.05), sm((.42 - d) / .2)); } // the plunge pool
     return h; }
   const hf = makeHeightfield(S, 300, height), { hAt, normAt } = hf;
-  const GRID = .48, CITY = (x, z) => shoreD(x, z) < -.3 && riverD(x, z) > .55 && Math.abs(x) < 4.75 && Math.abs(z) < 4.75;
+  const GRID = .48, CITY = (x, z) => shoreD(x, z) < -.3 && riverD(x, z) > .55 && Math.abs(x) < 4.75 && Math.abs(z) < 4.75 && Math.abs(z - cliffZ(x)) > .3;
   const terrMat = new THREE.MeshStandardMaterial({ roughness: .9 }); MATS.push(terrMat);
   terrMat.onBeforeCompile = sh => { Object.assign(sh.uniforms, U, { tSand: { value: T.sand }, tSandN: { value: T.sandN }, tRock: { value: T.rock }, tRockN: { value: T.rockN }, tGrass: { value: T.grass }, tGrassN: { value: T.grassN }, tLime: { value: T.lime } });
     sh.vertexShader = 'varying vec3 vWP; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
@@ -48,6 +53,8 @@ export function build() {
   float dep = -P.y; if (dep > 0.) col += vec3(.6, .8, .95) * caustic(P.xz, uTime) * exp(-dep * 1.2) * .4 * uSun;
   col *= cloudShade(P.xz, uTime, uCloud);
   vec2 gi = abs(fract(g + .5) - .5); float lamp = smoothstep(.07, .0, length(gi)) * (1. - mB) * (1. - mS) * step(P.y, .7); lampE = vec3(1., .72, .4) * lamp * uGlow * 2.2 + vec3(1., .75, .45) * road * uGlow * .05 * (1. - mB);
+  float bl = smoothstep(1.05, 1.22, P.y), cf = smoothstep(.4, .65, slope) * step(.35, P.y); col = mix(col, mix(park * .9, tri2(tRock, P, w, .35) * vec3(.5, .46, .42), smoothstep(.45, .75, fbm(P.xz * 1.7)) * .5), bl);
+  col = mix(col, tri2(tRock, P, w, .3) * vec3(.52, .48, .44) * (.8 + .3 * sin(P.y * 11. + fbm(P.xz * 2.) * 3.)), cf); lampE *= (1. - bl) * (1. - cf); road *= (1. - bl) * (1. - cf);
   street = road; diffuseColor.rgb = col;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(mix(.92, .6, street), .2, uWet * (1. - mB) * (1. - mS));')
       .replace('#include <normal_fragment_maps>', '{ vec3 nT = normalize(mix(triN(tRockN, vWP, Nn, w, .4), triN(tSandN, vWP, Nn, w, .35), max(mB, mS))); normal = normalize((viewMatrix * vec4(mix(nT, Nn, .5 * (1. - mB - mS)), 0.)).xyz); }')
@@ -179,6 +186,49 @@ export function build() {
     ctx.bridge = { c, ax, DY, L }; }
   { const bm = ctx.glowMat(new THREE.MeshStandardMaterial({ color: '#222', emissive: '#fff0c8', emissiveIntensity: 4 }), 4.5), im = new THREE.InstancedMesh(new THREE.SphereGeometry(.009, 6, 4), bm, bulbs.length), m = new THREE.Matrix4(); bulbs.forEach((p, i) => { m.makeTranslation(p.x, p.y, p.z); im.setMatrixAt(i, m); }); island.add(im); MATS.push(bm); }
 
+  /* the falls: the river runs along the top of the bluff and slides off its edge in a curtain, floodlit at night, into a
+     churning plunge pool wrapped in mist */
+  const fallL = new THREE.PointLight('#7fe8ff', 0, 3.2, 1.5); const MIST = { list: [] };
+  { const dir = RIV[1].clone().sub(RIV[0]).normalize(), ry = Math.atan2(dir.x, dir.y), FU = { uT: U.uTime, uSun: U.uSun, uGlow: U.uGlow, uPow: CU.uPow };
+    const flowM = new THREE.MeshStandardMaterial({ color: '#2a6a78', roughness: .06, metalness: .1, normalMap: tex('water_nor.jpg', false), normalScale: new THREE.Vector2(.5, .5), transparent: true, opacity: .9 }); MATS.push(flowM);
+    flowM.onBeforeCompile = sh => { sh.uniforms.uT = U.uTime; sh.fragmentShader = 'uniform float uT;\n' + sh.fragmentShader.replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', 'vec2 fuv = vNormalMapUv * vec2(1.5, 4.); vec3 mapN = normalize((texture2D(normalMap, fuv + vec2(0., uT * .35)).xyz * 2. - 1.) + (texture2D(normalMap, fuv * 1.7 + vec2(.3, uT * .55)).xyz * 2. - 1.));'); };
+    const z0 = -5, L = Math.hypot(FALL[0] - RIV[0].x, FALL[1] - z0) + .04, mid = [(FALL[0] + lerp(RIV[0].x, FALL[0], -.0)) / 2, (FALL[1] + z0) / 2];
+    const up = new THREE.Mesh(new THREE.PlaneGeometry(.78, L).rotateX(-Math.PI / 2), flowM); up.position.set((RIV[0].x + FALL[0]) / 2, RUP, mid[1]); up.rotation.y = ry; up.receiveShadow = true; island.add(up);
+    const lip = new THREE.Mesh(new THREE.PlaneGeometry(.78, RUP - (RUP - .2)), new THREE.MeshStandardMaterial({ color: '#1a4a5a', roughness: .2, transparent: true, opacity: .85 })); MATS.push(lip.material); lip.position.set(RIV[0].x, RUP - .1, -4.995); lip.rotation.y = Math.PI; island.add(lip);
+    // the curtain: a ribbon bent on a falling arc, streaked and foaming, lit by the moon and by the floodlights in the pool
+    const n = 30, cg2 = new THREE.PlaneGeometry(1, 1, 12, n), P = cg2.attributes.position, uv = cg2.attributes.uv, Wf = .56, drop = RUP + .02;
+    for (let i = 0; i < P.count; i++) { const u = uv.getX(i), f = 1 - uv.getY(i); P.setXYZ(i, (u - .5) * Wf * (1 + .3 * f), RUP + .005 - f * drop, -.06 + .26 * Math.sqrt(f) + .02 * Math.sin(u * 17. + f * 3.)); }
+    cg2.computeVertexNormals();
+    const curtM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: FU,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+      fragmentShader: `uniform float uT, uSun, uGlow, uPow; varying vec2 vUv;\n${GLSL_NOISE}
+        void main(){ float f = 1. - vUv.y, u = vUv.x; float s1 = vn(vec2(u * 34., f * 2.2 - uT * 2.4)), s2 = vn(vec2(u * 85. + 3., f * 5. - uT * 4.1)), s3 = vn(vec2(u * 12., f * 1.2 - uT * 1.6));
+          float streak = smoothstep(.25, .85, s1 * .6 + s2 * .4), edge = smoothstep(0., .1, u) * smoothstep(1., .9, u) * smoothstep(0., .04, vUv.y + .0);
+          float foam = smoothstep(.62, 1., f) * (.6 + .4 * s2), a = (.38 + .5 * streak + .35 * foam) * edge * (.85 + .15 * s3);
+          vec3 lit = vec3(.78, .88, .95) * (.22 + .9 * uSun) * (.75 + .5 * streak);
+          vec3 flood = mix(vec3(.25, .95, 1.), vec3(1., .3, .75), smoothstep(.2, .8, u + .25 * sin(uT * .3))) * uGlow * uPow * (.25 + .75 * f) * .55;
+          gl_FragColor = vec4(lit + flood * (.6 + .6 * streak) + vec3(1.) * foam * (.3 + .5 * uSun), clamp(a, 0., .95)); }` });
+    const curt = new THREE.Mesh(cg2, curtM); curt.position.set(FALL[0], 0, FALL[1]); curt.rotation.y = ry; curt.renderOrder = 3; island.add(curt);
+    // churning foam in the pool
+    const foamM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: FU, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+      fragmentShader: `uniform float uT, uSun, uGlow, uPow; varying vec2 vUv;\n${GLSL_NOISE}
+        void main(){ vec2 q = vUv - .5; float r = length(q) * 2., a = atan(q.y, q.x); float n = vn(vec2(a * 3. + uT * .4, r * 6. - uT * 1.4)) * .6 + vn(q * 26. + uT * .8) * .4;
+          float m = smoothstep(1., .25, r) * smoothstep(.3, .7, n + .35 * (1. - r)); gl_FragColor = vec4(vec3(.85, .93, 1.) * (.25 + .8 * uSun) + vec3(.3, .9, 1.) * uGlow * uPow * .25, m * .8); }` });
+    const foam = new THREE.Mesh(new THREE.CircleGeometry(.5, 40).rotateX(-Math.PI / 2), foamM); foam.position.set(FALL[0] + dir.x * .3, .012, FALL[1] + dir.y * .3); foam.renderOrder = 3; island.add(foam);
+    fallL.position.set(FALL[0] + dir.x * .45, .25, FALL[1] + dir.y * .45); island.add(fallL);
+    // mist: soft puffs boiling up off the pool and drifting downstream
+    const NM = Math.round(220 * QN), mg = new THREE.BufferGeometry(), mp = new Float32Array(NM * 3), ma = new Float32Array(NM * 2); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3).setUsage(THREE.DynamicDrawUsage)); mg.setAttribute('ma', new THREE.BufferAttribute(ma, 2).setUsage(THREE.DynamicDrawUsage)); mg.setDrawRange(0, 0);
+    const mm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: Object.assign({ uPx: { value: 1 } }, FU),
+      vertexShader: 'attribute vec2 ma; uniform float uPx; varying float vA; void main(){ vA = ma.x; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(uPx * ma.y / -mv.z, 1.5, 260.); }',
+      fragmentShader: 'uniform float uSun, uGlow, uPow; varying float vA; void main(){ float r2 = dot(gl_PointCoord - .5, gl_PointCoord - .5) * 4.; if (r2 > 1.) discard; gl_FragColor = vec4(vec3(.8, .9, .96) * (.2 + .7 * uSun) + vec3(.25, .8, 1.) * uGlow * uPow * .2, exp(-r2 * 3.) * vA); }' });
+    const mist = new THREE.Points(mg, mm); mist.frustumCulled = false; mist.renderOrder = 4; island.add(mist);
+    Object.assign(MIST, { mg, mp, ma, mm, NM, dir, base: new THREE.Vector3(FALL[0] + dir.x * .22, .02, FALL[1] + dir.y * .22) }); }
+  const stepMist = dt => { const M = MIST; M.mm.uniforms.uPx.value = cm.uniforms.uPx.value; fallL.intensity = U.uGlow.value * CU.uPow.value * 1.6;
+    for (let k = 0; k < Math.floor(70 * QN * dt + R()); k++) if (M.list.length < M.NM) M.list.push({ x: M.base.x + rnd(-.25, .25), y: M.base.y + rnd(0, .1), z: M.base.z + rnd(-.12, .12), vx: M.dir.x * rnd(.04, .14) + rnd(-.05, .05), vy: rnd(.08, .22), vz: M.dir.y * rnd(.04, .14) + rnd(-.05, .05), age: 0, life: rnd(2, 4), s: rnd(.25, .6) });
+    let i = 0; for (let k = M.list.length - 1; k >= 0; k--) { const p = M.list[k]; p.age += dt; if (p.age > p.life) { M.list[k] = M.list[M.list.length - 1]; M.list.pop(); continue; } p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy *= .99; }
+    for (const p of M.list) { const f = p.age / p.life; M.mp[i * 3] = p.x; M.mp[i * 3 + 1] = p.y; M.mp[i * 3 + 2] = p.z; M.ma[i * 2] = .16 * Math.min(1, p.age * 3) * (1 - f); M.ma[i * 2 + 1] = p.s * (1 + f * 1.5); i++; }
+    M.mg.setDrawRange(0, i); M.mg.attributes.position.needsUpdate = M.mg.attributes.ma.needsUpdate = true; };
+
   /* the marina and the breakwater, and the colossus at its end */
   const rockM = new THREE.MeshStandardMaterial({ map: T.rock, normalMap: T.rockN, color: '#8a8580', roughness: .9 }); MATS.push(rockM);
   { const ab = BW[1].clone().sub(BW[0]), n = Math.round(ab.length() / .07), im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.07, 0), rockM, n * 3), m = new THREE.Matrix4(), q = new THREE.Quaternion(); let k = 0;
@@ -212,6 +262,8 @@ export function build() {
   const barkM = new THREE.MeshStandardMaterial({ map: T.bark, normalMap: T.barkN, roughness: .9 }); MATS.push(barkM);
   { const spots = []; for (let k = 0; k < 26 * QN + 6; k++) { const a = -4.6 + k * (9.2 / (26 * QN + 6)), x0 = a * .7071, z0 = -a * .7071; let x = x0, z = z0; for (let q = 0; q < 40 && shoreD(x, z) > -.08; q++) { x -= .04; z -= .04; } for (let q = 0; q < 40 && shoreD(x, z) < -.08; q++) { x += .04; z += .04; }
       if (Math.abs(x) > 4.8 || Math.abs(z) > 4.8 || riverD(x, z) < .5 || hAt(x, z) < .05) continue; spots.push([x, hAt(x, z) - .01, z, rnd(.75, 1.0)]); }
+    // a palm grove along the top of the bluff, either side of the falls
+    for (let t = 0; t < 900 && spots.length < 44 * QN + 20; t++) { const x = rnd(-1.3, 4.85), z = rnd(-4.9, -3.8); if (z > cliffZ(x) - .14 || riverD(x, z) < .45 || hAt(x, z) < BLUFF - .15 || spots.some(p => Math.hypot(p[0] - x, p[2] - z) < .2)) continue; spots.push([x, hAt(x, z) - .01, z, rnd(.8, 1.15)]); }
     const [tr, fr] = palmGeometry(spots, { fronds: 10 }); if (tr) { const a = new THREE.Mesh(tr, barkM), b = new THREE.Mesh(fr, leafMat); a.castShadow = b.castShadow = true; island.add(a, b); } }
 
   /* under the bay: a capsized freighter, its propeller, and an anchor chain running up into the dark */
@@ -230,7 +282,7 @@ export function build() {
     fragmentShader: 'uniform float uG; varying vec3 vC; void main(){ float r = length(gl_PointCoord - .5) * 2.; if (r > 1.) discard; gl_FragColor = vec4(vC * exp(-r * r * 3.) * uG, 1.); }' });
   const cars = new THREE.Points(cg, cm); cars.frustumCulled = false; island.add(cars);
   const lanes = []; { const B2 = ctx.bridge; lanes.push({ a: B2.c.clone().addScaledVector(B2.ax, -B2.L - .4).setY(B2.DY + .05), b: B2.c.clone().addScaledVector(B2.ax, B2.L + .4).setY(B2.DY + .05), w: .035 });
-    for (let k = -8; k <= 4; k++) { const x = k * GRID + GRID / 2; let z0 = -4.8, z1 = 4.8; const pts = []; for (let z = -4.8; z <= 4.8; z += .2) if (CITY(x, z) || CITY(x - .2, z)) pts.push(z); if (pts.length > 6) lanes.push({ a: new THREE.Vector3(x, 0, pts[0]), b: new THREE.Vector3(x, 0, pts[pts.length - 1]), w: .03, road: 1 }); }
+    for (let k = -8; k <= 4; k++) { const x = k * GRID + GRID / 2; let z0 = -4.8, z1 = 4.8; const pts = []; for (let z = -4.8; z <= 4.8; z += .2) if ((CITY(x, z) || CITY(x - .2, z)) && z > cliffZ(x) + .3) pts.push(z); if (pts.length > 6) lanes.push({ a: new THREE.Vector3(x, 0, pts[0]), b: new THREE.Vector3(x, 0, pts[pts.length - 1]), w: .03, road: 1 }); }
     for (let k = -8; k <= 4; k++) { const z = k * GRID + GRID / 2; const pts = []; for (let x = -4.8; x <= 4.8; x += .2) if (CITY(x, z) || CITY(x, z - .2)) pts.push(x); if (pts.length > 6) lanes.push({ a: new THREE.Vector3(pts[0], 0, z), b: new THREE.Vector3(pts[pts.length - 1], 0, z), w: .03, road: 1 }); } }
   const CARS = Array.from({ length: NC }, () => ({ l: pick(lanes), f: R(), sp: rnd(.05, .12), dir: R() < .5 ? 1 : -1 })); CARS.forEach(c => { if (R() < .45) c.l = lanes[0]; });
 
@@ -246,7 +298,7 @@ export function build() {
   const origins = tall.slice().sort((a, b) => b[1] - a[1]).slice(0, 9); origins.push([BE[0], hAt(BE[0], BE[1]) + 2.9, BE[1]]);
   const COLS = ['#ffffff', '#dfeaff', '#bcd4ff', '#ffffff', '#cfe6ff'];
   const beams = origins.map(([x, y, z], i) => { const m = beamM.clone(); m.uniforms = { uA: { value: 0 }, diffuse: { value: new THREE.Color(COLS[i % 2]) } }; const b = new THREE.Mesh(beamG, m); b.position.set(x, y, z); b.visible = false; b.renderOrder = 8; island.add(b); return { b, m, i, rx: 0, rz: 0 }; });
-  const AU = makeAudio(); AU.onStart = A => { A.surf = A.loop('lowpass', 420, .7, .08); A.hum = A.loop('lowpass', 120, 1.2, .02); A.city = A.loop('bandpass', 700, .4, .02); };
+  const AU = makeAudio(); AU.onStart = A => { A.surf = A.loop('lowpass', 420, .7, .08); A.hum = A.loop('lowpass', 120, 1.2, .02); A.city = A.loop('bandpass', 700, .4, .02); A.fall = A.loop('lowpass', 900, .6, .035); };
   const BPM = 132, BEAT = 60 / BPM, T0 = 1.8, BUILD = T0 + 16 * BEAT, ROLL = BUILD + 8 * BEAT, END = ROLL + 32 * BEAT, OUT = END + 3.2;
   // the synth: Berlin, not Ibiza. A kick with a rumble tail, offbeat hats, a resonant bassline, a dark drone, metallic hits
   const SY = (() => { let c, o, rum, t0; const nz = (t, dur, type, f, vol, q = .8, f1, dest) => { const s = c.createBufferSource(); s.buffer = AU.noise; const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t + dur); fl.Q.value = q; const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .002); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(fl); fl.connect(g); g.connect(dest || o); s.start(t, Math.random() * 2); s.stop(t + dur + .02); };
@@ -277,7 +329,7 @@ export function build() {
     score.push([END, t => SY.sub(t, .8)]); score.sort((a, b) => a[0] - b[0]); }
   let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {}, si: 0 }; if (AU.ctx) SY.start(0); }, get evOn() { return !!ev; } };
   const NEONP = [(t) => .9 + .1 * Math.sin(t * 120), (t, dt) => R() < dt * 1.5 ? .1 : 1, t => .55 + .45 * Math.sin(t * 2.2), t => Math.sin(t * 3.4) > -.2 ? 1 : .08, (t) => (Math.sin(t * 37) > .3 && Math.sin(t * 5.1) > -.6) ? 1 : .25, () => 1];
-  ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360));
+  ctx.steps.push(dt => { const t = ctx.clock; cm.uniforms.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360)); stepMist(dt);
     const P = CU.uPow.value, G = .4 + U.uGlow.value * .5;
     beaconM.emissiveIntensity = (Math.sin(t * 3.1) > .6 ? 7 : .2) * P * G; strobeM.emissiveIntensity = ((t % 1.6) < .05 || ((t % 1.6) > .18 && (t % 1.6) < .23) ? 14 : 0) * P * G;
     ringL.intensity = ringM.emissiveIntensity * 1.6 * P;

@@ -160,7 +160,7 @@ export function initEngine(opts = {}) {
     E.unmount(); controls.userData.touched = 0;
     const island = new THREE.Group(); island.scale.setScalar(.001); scene.add(island);
     LOOK = Object.assign({}, DEFAULT_LOOKS, o.looks || {}); if (o.looks && o.looks.gold) LOOK.dusk = o.looks.gold; if (o.looks && o.looks.night) LOOK.night = Object.assign({ stars: o.stars ? 1 : 0 }, o.looks.night);
-    { const D = LOOK.dusk; LOOK.dawn = Object.assign({}, D, { dir: [-D.dir[0], D.dir[1] * .85, -D.dir[2]], col: '#ffb898', I: D.I * .8, warm: (D.warm || 0) * .55, exp: (D.exp || 1) * 1.04, rot: .5 }); }
+    { const D = LOOK.dusk; LOOK.dawn = Object.assign({}, D, { dir: [-D.dir[0], D.dir[1] * .85, -D.dir[2]], col: '#ffb898', I: D.I * .8, warm: (D.warm || 0) * .55, exp: (D.exp || 1) * 1.04, rot: (D.rot || 0) + .5 }); }
     Object.assign(sun.shadow.camera, SHADOW0); sun.shadow.camera.updateProjectionMatrix();
     const B = o.bloom || [.16, .5, 1.6]; bloom.strength = B[0]; bloom.radius = B[1]; bloom.threshold = B[2]; grade.uniforms.uSat.value = o.sat ?? 1.06;
     const C = o.cam, tT = new THREE.Vector3(C.target[0], C.target[1] + .55, C.target[2]), d = (innerWidth / innerHeight < .8 ? C.dist * 1.3 : C.dist) * .9 * (1 + deckH / innerHeight * (innerWidth < innerHeight ? .45 : .55));
@@ -240,9 +240,9 @@ export function wallMaterial(ctx, map, nor, tint = [.93, .9, .84]) {
    sun glitter, drifting cloud shade, shoreline foam, and edges that slosh against the glass */
 export function makeWater(ctx, hf, o) {
   const { S, H5, hAt } = hf, n = 256, d = new Uint8Array(n * n * 4);
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i + .5) / n * S - H5, z = (j + .5) / n * S - H5, dep = clamp((o.level - (o.depthAt ? o.depthAt(x, z) : hAt(x, z))) / (o.norm ?? 3), 0, 1), k = ((n - 1 - j) * n + i) * 4; d[k] = d[k + 1] = d[k + 2] = dep * 255; d[k + 3] = 255; }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i + .5) / n * S - H5, z = (j + .5) / n * S - H5, raw = Math.max(0, o.level - (o.depthAt ? o.depthAt(x, z) : hAt(x, z))), dep = clamp(raw / (o.norm ?? 3), 0, 1), dn = 1 - Math.exp(-raw * 1.35 / (o.norm ?? 3)), k = ((n - 1 - j) * n + i) * 4; d[k] = dep * 255; d[k + 1] = dn * 255; d[k + 2] = dep * 255; d[k + 3] = 255; }
   const depthTex = new THREE.DataTexture(d, n, n); depthTex.magFilter = depthTex.minFilter = THREE.LinearFilter; depthTex.needsUpdate = true;
-  const tr = new Uint8Array(n * n * 4); for (let k = 0; k < n * n; k++) { const t = 1 - .8 * sm((d[k * 4] / 255 - .3) / .6); tr[k * 4] = tr[k * 4 + 1] = tr[k * 4 + 2] = t * 255; tr[k * 4 + 3] = 255; }
+  const tr = new Uint8Array(n * n * 4); for (let k = 0; k < n * n; k++) { const t = 1 - .48 * sm((d[k * 4 + 1] / 255 - .28) / .68); tr[k * 4] = tr[k * 4 + 1] = tr[k * 4 + 2] = t * 255; tr[k * 4 + 3] = 255; }
   const transTex = new THREE.DataTexture(tr, n, n); transTex.magFilter = transTex.minFilter = THREE.LinearFilter; transTex.needsUpdate = true;
   const WU = { uTime: ctx.U.uTime, uWave: { value: o.wave ?? .03 }, uWind: ctx.U.uWind, uSun: ctx.U.uSun, uCloud: ctx.U.uCloud, uDeep: { value: new THREE.Color(o.deep) }, uShal: { value: new THREE.Color(o.shallow) }, uFoam: { value: 1 }, uSunV: { value: new THREE.Vector3(0, 1, 0) }, uGlint: { value: o.glint ?? 1 } };
   const WAVE = `float wav(vec2 p, float t){ float uW = uWave * (.65 + .35 * uWind); float w = uW * (.55 * sin(p.x * 1.1 - t * 1.2) + .3 * sin((p.x * .6 + p.y * .8) * 1.9 - t * 1.6) + .15 * sin((p.x - p.y) * 3.3 - t * 2.4));
@@ -252,13 +252,19 @@ export function makeWater(ctx, hf, o) {
   mat.onBeforeCompile = sh => { Object.assign(sh.uniforms, WU);
     sh.vertexShader = 'uniform float uTime, uWave, uWind;\n' + WAVE + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpw = modelMatrix * vec4(position, 1.); transformed.y += wav(wpw.xz, uTime);');
     sh.fragmentShader = 'uniform float uTime, uWave, uWind, uSun, uFoam, uCloud, uGlint; uniform vec3 uDeep, uShal, uSunV;\n' + GLSL_NOISE + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n { float dd = texture2D(thicknessMap, vThicknessMapUv).g; diffuseColor.rgb *= mix(vec3(1.), mix(uDeep * .55, uDeep * .16, smoothstep(.6, 1., dd)), smoothstep(.3, .85, dd)); }')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+ { float dd = texture2D(thicknessMap, vThicknessMapUv).g; vec3 mid = mix(uShal, uDeep, .5) * 1.5 + .02;
+   vec3 tn = mix(vec3(1.), mid, smoothstep(.12, .5, dd)); tn = mix(tn, uDeep * 1.25 + .012, smoothstep(.45, .97, dd)); diffuseColor.rgb *= tn; }`)
       .replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', `vec2 nuv = vNormalMapUv * 6.; float tt = uTime * .028 * uWind;
 	vec3 mapN = normalize((texture2D(normalMap, nuv + vec2(tt, tt * .6)).xyz * 2. - 1.) + (texture2D(normalMap, nuv * 1.9 + vec2(-tt * 1.3, tt * .8)).xyz * 2. - 1.) + (texture2D(normalMap, nuv * .37 + vec2(tt * .4, -tt * .5)).xyz * 2. - 1.) * .6);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-	{ float th = texture2D(thicknessMap, vThicknessMapUv).g * ${(o.norm ?? 3).toFixed(2)}, cs = cloudShade(vThicknessMapUv * ${S.toFixed(1)}, uTime, uCloud);
-	  float dn = texture2D(thicknessMap, vThicknessMapUv).g, vv = .75 + .5 * vn(vThicknessMapUv * 7. + uTime * .015) * vn(vThicknessMapUv * 3.1 - uTime * .01);
-	  totalEmissiveRadiance += mix(uShal, uDeep, smoothstep(.4, 2.2, th)) * (1. - exp(-th * 1.1)) * mix(1., .5, smoothstep(.7, 1., dn)) * mix(1., vv, smoothstep(.4, .8, dn)) * uSun * cs;
+	{ vec4 dt4 = texture2D(thicknessMap, vThicknessMapUv); float th = dt4.r * ${(o.norm ?? 3).toFixed(2)}, dn = dt4.g, cs = cloudShade(vThicknessMapUv * ${S.toFixed(1)}, uTime, uCloud);
+	  // in-scatter: turquoise over sand, teal over the slope, sapphire over the abyss, eased so every step down still shows
+	  vec3 sc = mix(uShal, mix(uShal, uDeep, .55) * 1.18, smoothstep(.06, .42, dn)); sc = mix(sc, uDeep * 1.08, smoothstep(.42, .96, dn));
+	  float vv = .78 + .44 * vn(vThicknessMapUv * 7. + uTime * .015) * vn(vThicknessMapUv * 3.1 - uTime * .01), mott = .9 + .2 * fbm(vThicknessMapUv * 5.5 + vec2(uTime * .004, -uTime * .003));
+	  float fv = 1. - clamp(dot(normal, normalize(vViewPosition)), 0., 1.), fr = fv * fv * fv;
+	  totalEmissiveRadiance += sc * (.18 + .82 * (1. - exp(-th * 1.25))) * mix(1., .8, smoothstep(.8, 1., dn)) * mix(1., vv * mott, smoothstep(.2, .7, dn)) * uSun * cs;
+	  totalEmissiveRadiance += mix(uShal, uDeep, .4) * fr * smoothstep(.15, .6, dn) * .35 * uSun * cs;
 	  float fo = smoothstep(.07, .0, th) * smoothstep(.25, .75, vn(vThicknessMapUv * 260. + uTime * .3) * .6 + vn(vThicknessMapUv * 90. - uTime * .2) * .4) * uFoam; totalEmissiveRadiance += vec3(.9) * fo * uSun * cs;
 	  vec3 rv = reflect(-normalize(vViewPosition), normal); float gl = pow(max(dot(rv, uSunV), 0.), 1400.) * step(.82, vn(vThicknessMapUv * 900. + uTime * 2.3)); totalEmissiveRadiance += vec3(1., .96, .88) * gl * 60. * uSun * uGlint * cs; }`); };
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(S, S, LO ? 120 : 220, LO ? 120 : 220).rotateX(-Math.PI / 2), mat); mesh.position.y = o.level; mesh.receiveShadow = true; ctx.island.add(mesh);

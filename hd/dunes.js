@@ -11,30 +11,37 @@ export const META = { name: 'Sea of Dunes', line: 'A star dune, a sandstone jebe
 export function build() {
   const N = makeNoise(+(Q.get('seed') || 31)), S = 10, H5 = 5, DEPTH = SLAB, NORM = 2.2, WL = .12;
   const ctx = createEngine({ cam: { target: [-.2, 1.0, -.2], dist: 46, pol: 1.02, az: Math.PI / 4, min: 9, max: 70 }, sunRef: 3.4, bloom: [.12, .5, 1.7], sat: 1.05,
-    looks: { noon: { sky: 'noon', dir: [-.42, 1, .6], col: '#fff0dc', I: 3.6, env: .9, exp: 1.0 }, gold: { sky: 'gold', dir: [-.95, .24, .22], col: '#ff9a52', I: 3.8, env: .62, exp: 1.0, warm: 1 },
-      quake: { sky: 'storm', dir: [-.8, .38, .3], col: '#ffb070', I: 1.9, env: .45, exp: 1.12, warm: .7, skyI: .55 } } });
+    looks: { noon: { sky: 'noon', dir: [-.42, 1, .6], col: '#fff0dc', I: 3.6, env: .9, exp: 1.0 }, gold: { sky: 'gold', dir: [-.42, .26, .9], col: '#ff9a52', I: 3.9, env: .62, exp: 1.0, warm: 1, rot: .145 },
+      quake: { sky: 'storm', dir: [-.45, .4, .8], col: '#ffb070', I: 1.9, env: .45, exp: 1.12, warm: .7, skyI: .55 } } });
   const { island, tex, U, MATS } = ctx; ctx.waterLevel = WL;
   Object.assign(ctx.sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, far: 90 }); ctx.sun.shadow.camera.updateProjectionMatrix();
   const T = { sand: tex('sand_diff.jpg'), sandN: tex('sand_nor.jpg', false), rock: tex('rock_diff.jpg'), rockN: tex('rock_nor.jpg', false), lime: tex('lime_diff.jpg'), limeN: tex('lime_nor.jpg', false), grass: tex('mtn_diff.jpg'), grassN: tex('mtn_nor.jpg', false),
     leaf: tex('leaf_diff.jpg', true, false), leafA: tex('leaf_alpha.jpg', false, false), leafN: tex('leaf_nor.jpg', false, false), bark: tex('bark_diff.jpg'), barkN: tex('bark_nor.jpg', false), plaster: tex('plaster_diff.jpg') };
 
   /* the land */
-  const C = [-.5, -.35], FLOOR = .02, R0 = 1.8, R1 = 2.7, O = [3.85, 3.7], J = [-3.4, -3.3], WD = [.7071, .7071];
-  const BAR = [[2.3, -1.5, .95], [.9, -3.5, .75], [3.5, .5, .62], [-3.7, 2.4, .6], [-1.6, 3.6, .55]];
+  const SD = [2.05, -2.75], O = [3.85, 3.7], J = [-3.4, -3.3], WD = [.7071, .7071];
+  // the cliff: the jebel's face is cut sheer toward the viewer, with a deep niche where the cathedral is carved out of the living rock
+  const NF = [.7071, .7071], TN = [-.7071, .7071], D0 = .95, ND = .5, NW = .9, FLOOR = .3, R0 = 1.25, R1 = 2.05;
+  const FP = [J[0] + NF[0] * (D0 - ND), J[1] + NF[1] * (D0 - ND)], C = [FP[0] + NF[0] * .65, FP[1] + NF[1] * .65];
+  const sLim = t => D0 - ND * sm((NW - Math.abs(t)) / .03), frontK = (x, z) => { const dx = x - J[0], dz = z - J[1]; return sm((dx * NF[0] + dz * NF[1] - sLim(dx * TN[0] + dz * TN[1])) / .05); };
+  const BAR = [[.75, .35, .72], [3.5, .5, .62], [-3.7, 2.4, .6], [-1.6, 3.6, .55]];
   const sandH = (x, z) => { const u = x / H5, v = z / H5; let h = .48 + N.fbm(u * 1.6 + 3, v * 1.6) * .2 + N.fbm(u * 4, v * 4) * .05;
     const al = x * WD[0] + z * WD[1], ac = -x * WD[1] + z * WD[0], s = ((al * .45 + .3 * N.fbm(ac * .35, al * .15) + 10) % 1 + 1) % 1, pr = s < .78 ? s / .78 : (1 - s) / .22;
     h += .42 * Math.pow(pr, 1.5) * sm(N.fbm(ac * .4 + 7, al * .3) * 1.4 + .6);
-    const dx = x - C[0], dz = z - C[1], r = Math.hypot(dx, dz), a = Math.atan2(dz, dx) + .45 * Math.sin(r * 1.4), Ra = .95 + 2.1 * Math.pow(Math.abs(Math.cos(a * 2.5 + .7)), 3) + .3 * N.fbm(a * 2, 3);
-    const hs = 2.6 * Math.pow(Math.max(0, 1 - r / Ra), 1.55) + .5 * Math.exp(-r * r / .35); h = h * (1 - .5 * sm(hs)) + hs;
+    const dx = x - SD[0], dz = z - SD[1], r = Math.hypot(dx, dz), a = Math.atan2(dz, dx) + .45 * Math.sin(r * 1.4), Ra = .95 + 1.7 * Math.pow(Math.abs(Math.cos(a * 2.5 + .7)), 3) + .3 * N.fbm(a * 2, 3);
+    const hs = 2.3 * Math.pow(Math.max(0, 1 - r / Ra), 1.55) + .5 * Math.exp(-r * r / .35); h = h * (1 - .5 * sm(hs)) + hs;
     BAR.forEach(([bx, bz, s]) => { const ex = x - bx, ez = z - bz, la = ex * WD[0] + ez * WD[1], lc = -ex * WD[1] + ez * WD[0], la2 = la - .55 * lc * lc / s, e1 = (la2 / s) ** 2 + (lc / (1.15 * s)) ** 2;
       let hb = .72 * s * Math.pow(Math.max(0, 1 - e1), 1.3); const e2 = ((la2 - .5 * s) / (.62 * s)) ** 2 + (lc / (.72 * s)) ** 2; hb -= .8 * s * Math.max(0, 1 - e2); h += Math.max(0, hb); });
     return h; };
   const jebelH = (x, z) => { let best = 0;
-    [[J[0], J[1], 1.75, 3.1], [-1.25, -4.25, .55, 2.2], [-4.35, -1.35, .32, 2.6]].forEach(([jx, jz, jr, jh], q) => { const rj = Math.hypot(x - jx, z - jz) + N.fbm(x * 1.4 + q * 5, z * 1.4) * .4 * jr;
-      let hj = jh * sm((jr - rj) / (.18 + jr * .08)); const st = .42, qq = hj / st; hj = (Math.floor(qq) + sm((qq - Math.floor(qq) - .72) / .28)) * st; hj += N.ridge(x * 3, z * 3) * .14 * sm(hj); best = Math.max(best, hj); });
+    [[J[0], J[1], 2.0, 3.25], [-1.25, -4.35, .55, 2.2], [-4.45, -1.35, .32, 2.6]].forEach(([jx, jz, jr, jh], q) => { const rj = Math.hypot(x - jx, z - jz) + N.fbm(x * 1.4 + q * 5, z * 1.4) * .4 * jr * (q ? 1 : .55);
+      let hj = jh * sm((jr - rj) / (.18 + jr * .08)); if (!q) { const dx = x - jx, dz = z - jz; hj *= sm((sLim(dx * TN[0] + dz * TN[1]) - (dx * NF[0] + dz * NF[1])) / .035); } const st = .42, qq = hj / st; hj = (Math.floor(qq) + sm((qq - Math.floor(qq) - .72) / .28)) * st; hj += N.ridge(x * 3, z * 3) * .14 * sm(hj); best = Math.max(best, hj); });
     return best; };
   const oasisE = (x, z) => Math.hypot((x - O[0]) / 1.65, (z - O[1]) / 1.4) + N.fbm(x * 1.2, z * 1.2) * .22;
   function height(u, v) { const x = u * H5, z = v * H5; let h = Math.max(sandH(x, z), jebelH(x, z));
+    { const fk = frontK(x, z), r = Math.hypot(x - FP[0], z - FP[1]), rc = Math.hypot(x - C[0], z - C[1]);
+      h = lerp(h, FLOOR + .16 + N.fbm(x * 2.2, z * 2.2) * .1, (1 - sm((rc - R0 * .7) / (R1 + .4 - R0 * .7))) * fk);
+      h = Math.max(h, FLOOR + (.42 + N.fbm(x * 2.5, z * 2.5) * .1) * (1 - sm((r - .25) / 1.1)) * fk); }
     const e = oasisE(x, z); h = lerp(h, WL + .04 + N.fbm(x * 3, z * 3) * .05, sm((1.45 - e) / .55)); h = lerp(h, -3.2 + N.fbm(x * 2 + 4, z * 2) * .3, sm((.95 - e) / .4));
     return h; }
   const hf = makeHeightfield(S, 320, height), { hAt, normAt } = hf;
@@ -42,11 +49,12 @@ export function build() {
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), h = p.getY(i), jh = jebelH(x, z); zn[i * 2] = jh > .25 && jh >= sandH(x, z) - .08 ? sm((jh - .2) / .3) : 0; const e = oasisE(x, z); zn[i * 2 + 1] = sm((1.95 - e) / .45) * (h > WL + .015 ? 1 : 0); }
     hf.geo.setAttribute('zn', new THREE.BufferAttribute(zn, 2)); }
   const RU = { uRev: { value: 0 } };
-  const hR = (x, z) => { const m = RU.uRev.value * (1 - sm((Math.hypot(x - C[0], z - C[1]) - R0) / (R1 - R0))); return lerp(hAt(x, z), FLOOR, m); };
+  const hR = (x, z) => { const m = RU.uRev.value * (1 - sm((Math.hypot(x - C[0], z - C[1]) - R0) / (R1 - R0))) * frontK(x, z); return lerp(hAt(x, z), FLOOR, m); };
   const terrMat = new THREE.MeshStandardMaterial({ roughness: .95 }); MATS.push(terrMat);
   terrMat.onBeforeCompile = sh => { Object.assign(sh.uniforms, U, RU, { tSand: { value: T.sand }, tSandN: { value: T.sandN }, tRock: { value: T.rock }, tRockN: { value: T.rockN }, tLime: { value: T.lime }, tLimeN: { value: T.limeN }, tGrass: { value: T.grass }, tGrassN: { value: T.grassN } });
     sh.vertexShader = 'uniform float uRev; attribute vec2 zn; varying vec2 vZn; varying vec3 vWP; varying vec3 vWN; varying float vRv;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      { float rd = length(transformed.xz - vec2(${C[0]}, ${C[1]})); float rm = uRev * (1. - smoothstep(${R0.toFixed(2)}, ${R1.toFixed(2)}, rd)); transformed.y = mix(transformed.y, ${FLOOR.toFixed(3)}, rm); vRv = rm; }
+      { float rd = length(transformed.xz - vec2(${C[0].toFixed(3)}, ${C[1].toFixed(3)})); vec2 jq = transformed.xz - vec2(${J[0]}, ${J[1]}); float ss = dot(jq, vec2(${NF[0]}, ${NF[1]})), tt = dot(jq, vec2(${TN[0]}, ${TN[1]}));
+        float rm = uRev * (1. - smoothstep(${R0.toFixed(2)}, ${R1.toFixed(2)}, rd)) * smoothstep(0., 1., (ss - (${D0} - ${ND} * smoothstep(0., 1., (${NW} - abs(tt)) / .03))) / .05); transformed.y = mix(transformed.y, ${FLOOR.toFixed(3)}, rm); vRv = rm; }
       vZn = zn; vWP = (modelMatrix * vec4(transformed, 1.)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);`);
     sh.fragmentShader = `uniform sampler2D tSand, tSandN, tRock, tRockN, tLime, tLimeN, tGrass, tGrassN; uniform float uTime, uSun, uCloud, uWind, uRev; varying vec2 vZn; varying vec3 vWP; varying vec3 vWN; varying float vRv; float mR, mG, mW, flag; float ripP;\n` + GLSL_NOISE + TRI + sh.fragmentShader
       .replace('#include <map_fragment>', `
@@ -59,7 +67,7 @@ export function build() {
   mR = vZn.x * smoothstep(.08, .3, slope + vZn.x * .15); mG = vZn.y * (1. - smoothstep(.35, .6, slope)) * smoothstep(.3, .7, fbm(P.xz * 2.2) + .3); mW = smoothstep(${(WL + .1).toFixed(3)}, ${(WL - .01).toFixed(3)}, P.y);
   vec3 col = sand; col = mix(col, mix(stone, sand * .95, smoothstep(.2, .04, slope) * .55), mR); col = mix(col, grass, mG); col = mix(col, sand * vec3(.62, .55, .45), mW);
   float dep = ${WL.toFixed(3)} - P.y; if (dep > 0.) { col = mix(col, col * vec3(.5, .62, .6), smoothstep(0., 1.5, dep)); col += vec3(.75, .95, .9) * caustic(P.xz * 1.3, uTime) * exp(-dep * 1.2) * .45 * uSun; }
-  { vec2 cq = (P.xz - vec2(${C[0]}, ${C[1]})); vec2 rq = mat2(.7071, -.7071, .7071, .7071) * cq * 4.2; vec2 fr = abs(fract(rq + vec2(step(.5, fract(rq.y * .5)) * .5, 0.)) - .5); float jt = smoothstep(.43, .47, max(fr.x, fr.y));
+  { vec2 cq = (P.xz - vec2(${C[0].toFixed(3)}, ${C[1].toFixed(3)})); vec2 rq = mat2(.7071, -.7071, .7071, .7071) * cq * 4.2; vec2 fr = abs(fract(rq + vec2(step(.5, fract(rq.y * .5)) * .5, 0.)) - .5); float jt = smoothstep(.43, .47, max(fr.x, fr.y));
     vec3 fl = tri2(tLime, P, w, .5) * vec3(1.1, .9, .7) * (.85 + .3 * hh(floor(rq + vec2(step(.5, fract(rq.y * .5)) * .5, 0.)))); fl *= 1. - jt * .55; flag = smoothstep(.85, 1., vRv) * smoothstep(.2, .02, P.y - ${FLOOR.toFixed(3)}); col = mix(col, mix(fl, sand, smoothstep(.55, .8, fbm(P.xz * 3.)) * .6), flag); }
   col *= cloudShade(P.xz, uTime, uCloud);
   diffuseColor.rgb = col;`)
@@ -73,7 +81,7 @@ export function build() {
 
   /* carved sandstone: triplanar stone with moldings, flutes and lattice relief cut into it, weathered, sand-dusted on every ledge */
   const ORG = { value: new THREE.Vector3() };
-  const carved = (tint, org = { value: new THREE.Vector3() }, fine = 1) => { const m = new THREE.MeshStandardMaterial({ roughness: .9, color: tint }); MATS.push(m);
+  const carved = (tint, org = { value: new THREE.Vector3() }, fine = 1, plain = false) => { const m = new THREE.MeshStandardMaterial({ roughness: .9, color: tint }); MATS.push(m);
     m.onBeforeCompile = sh => { Object.assign(sh.uniforms, { tLime: { value: T.lime }, tLimeN: { value: T.limeN }, uOrg: org });
       sh.vertexShader = 'uniform vec3 uOrg; varying vec3 vCP; varying vec3 vCN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCP = (modelMatrix * vec4(transformed, 1.)).xyz - uOrg; vCN = normalize(mat3(modelMatrix) * objectNormal);');
       sh.fragmentShader = 'uniform sampler2D tLime, tLimeN; varying vec3 vCP; varying vec3 vCN;\n' + GLSL_NOISE + TRI + sh.fragmentShader
@@ -83,15 +91,16 @@ export function build() {
     float yb = P.y * ${(12.5 * fine).toFixed(2)}, g = smoothstep(.36, .44, abs(fract(yb) - .5)), G = smoothstep(.44, .49, abs(fract(P.y * ${(3.1 * fine).toFixed(2)}) - .5));
     float fl = smoothstep(.40, .47, abs(fract(hz.x * ${(16. * fine).toFixed(1)}) - .5)) * step(.5, fract(P.y * ${(1.55 * fine).toFixed(2)} + .25));
     float lat = smoothstep(.55, .9, abs(sin(hz.x * ${(70. * fine).toFixed(0)}.) * sin(hz.y * ${(70. * fine).toFixed(0)}.))) * (1. - step(.5, fract(P.y * ${(1.55 * fine).toFixed(2)} + .25)));
+    ${plain ? 'g = 0.; G = 0.; fl = 0.; lat = 0.;' : ''}
     float wear = fbm(P.xz * 3. + P.y * 2.3), grime = smoothstep(.5, .9, fbm(vec2(hz.x * 14., P.y * 1.4)));
     st *= mix(1., .5, (g * .7 + G) * vert) * mix(1., .72, (fl + lat * .6) * vert) * (.82 + .32 * wear) * (1. - .28 * grime * vert);
     st = mix(st, st * vec3(.78, .74, .7), smoothstep(.55, .85, fbm(P.xz * 1.3 + P.y)));
     st = mix(st, vec3(.82, .6, .38), smoothstep(.55, .92, Nc.y) * (.55 + .45 * wear));
     diffuseColor.rgb *= st; }`)
         .replace('#include <normal_fragment_maps>', `{ vec3 Nc = normalize(vCN); vec3 nT = triN(tLimeN, vCP, Nc, triW(Nc), .9); float e = .004, yb = vCP.y * ${(12.5 * fine).toFixed(2)};
-          float d0 = smoothstep(.36, .44, abs(fract(yb) - .5)), d1 = smoothstep(.36, .44, abs(fract(yb + e * ${(12.5 * fine).toFixed(2)}) - .5)); nT = normalize(nT + vec3(0., (d1 - d0) / e * .004, 0.) * (1. - abs(Nc.y)));
+          float d0 = smoothstep(.36, .44, abs(fract(yb) - .5)), d1 = smoothstep(.36, .44, abs(fract(yb + e * ${(12.5 * fine).toFixed(2)}) - .5)); nT = normalize(nT + vec3(0., (d1 - d0) / e * .004, 0.) * (1. - abs(Nc.y)) * ${plain ? '0.' : '1.'});
           normal = normalize((viewMatrix * vec4(nT, 0.)).xyz); }`); };
-    m.customProgramCacheKey = () => 'carved' + fine; return m; };
+    m.customProgramCacheKey = () => 'carved' + fine + plain; return m; };
   const ruinM = carved('#f2e2cc'), dark = new THREE.MeshStandardMaterial({ color: '#0a0705', roughness: 1 }); MATS.push(dark);
   const add = (g, m, x, y, z, par = island, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = o.receiveShadow = true; par.add(o); return o; };
   const box = (w, h, d) => new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), cyl = (rt, rb, h, s = 16) => new THREE.CylinderGeometry(rt, rb, h, s).translate(0, h / 2, 0);
@@ -113,7 +122,7 @@ export function build() {
   { const stoneR = new THREE.MeshStandardMaterial({ roughness: .9 }); const tob = terrMat.onBeforeCompile; stoneR.onBeforeCompile = sh => { tob(sh); sh.uniforms.uRev = { value: 0 }; }; // the natural arch shares the jebel's rock, never the quake's bowl
     const g = new THREE.TorusGeometry(.62, .17, 12, 32, Math.PI); { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 1 + N.fbm(p.getX(i) * 4, p.getY(i) * 4) * .35; p.setXYZ(i, p.getX(i), p.getY(i), p.getZ(i) * k); } g.computeVertexNormals(); }
     const zz = new Float32Array(g.attributes.position.count * 2); for (let i = 0; i < zz.length; i += 2) zz[i] = 1; g.setAttribute('zn', new THREE.BufferAttribute(zz, 2));
-    const m = new THREE.Mesh(g, stoneR); MATS.push(stoneR); const x = -1.75, z = -2.35; m.position.set(x, hAt(x, z) - .12, z); m.rotation.y = .7; m.scale.set(1.1, 1.25, 1); m.castShadow = m.receiveShadow = true; island.add(m); }
+    const m = new THREE.Mesh(g, stoneR); MATS.push(stoneR); const x = -.45, z = -3.75; m.position.set(x, hAt(x, z) - .12, z); m.rotation.y = -.35; m.scale.set(1.1, 1.25, 1); m.castShadow = m.receiveShadow = true; island.add(m); }
 
   /* the oasis: date palms, shrubs, a Bedouin camp with a fire */
   const leafMat = sway(new THREE.MeshStandardMaterial({ map: T.leaf, alphaMap: T.leafA, alphaTest: .45, normalMap: T.leafN, side: THREE.DoubleSide, roughness: .65, color: '#c8d8a0' }), U, .015); MATS.push(leafMat);
@@ -136,37 +145,72 @@ export function build() {
     parts.push(E(.16, .08, .07, 0, .26, 0), E(.07, .07, .055, -.01, .34, 0), E(.03, .1, .03, .17, .33, 0).applyMatrix4(new THREE.Matrix4().makeRotationZ(-.5)), E(.055, .03, .03, .25, .44, 0));
     [[-.1, -.04], [-.1, .04], [.1, -.04], [.1, .04]].forEach(([x, z]) => { const l = new THREE.CylinderGeometry(.012, .01, .22, 5); l.translate(x, .11, z); parts.push(l.toNonIndexed()); }); return mergeGeometries(parts); })();
   const caravan = new THREE.InstancedMesh(camelG, camelM, 5); caravan.castShadow = true; island.add(caravan); ctx.life(caravan, 1);
-  const path = new THREE.CatmullRomCurve3([[-4.6, 0, 3.2], [-3, 0, .2], [-1.2, 0, -1.9], [.6, 0, -3.2], [2.8, 0, -3.6], [4.6, 0, -2.4]].map(p => new THREE.Vector3(...p)));
+  const path = new THREE.CatmullRomCurve3([[-4.6, 0, 3.2], [-3.1, 0, .55], [-.75, 0, -.95], [.8, 0, -.25], [2.5, 0, .15], [4.6, 0, -.7]].map(p => new THREE.Vector3(...p)));
 
-  /* the lost basilica, waiting under the star dune */
-  const catM = carved('#f6e6d0', ORG), cat = new THREE.Group(), EM = []; cat.visible = false;
+  /* the cathedral, cut out of the living rock of the jebel: a two-storey facade in a sheer niche, a portico of six columns,
+     a pediment with a rose window, a tholos between broken pediments and spired towers, rock left standing above it.
+     Colossal elephants step half out of the cliff on either side and a pair of recumbent lions guard the stair; the sand has
+     drifted up to their shoulders. Tiny pilgrims on the clifftop give the scale. */
+  const catM = carved('#f6e2c8', ORG), statM = carved('#ecd4b4', ORG, 1, true), cat = new THREE.Group(), EM = [];
   const B = (w, h, d, x, y, z, m = catM) => add(box(w, h, d), m, x, y, z, cat), Cy = (rt, rb, h, x, y, z, s = 16, m = catM) => add(cyl(rt, rb, h, s), m, x, y, z, cat);
   const archG = (w, h) => { const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, h - w / 2); s.absarc(0, h - w / 2, w / 2, 0, Math.PI, false); s.lineTo(-w / 2, 0); return new THREE.ShapeGeometry(s, 10); };
-  const win = (w, h, x, y, z, ry, emit = true) => { const m = new THREE.Mesh(archG(w, h), dark); m.position.set(x, y, z); m.rotation.y = ry; cat.add(m); if (emit) EM.push([new THREE.Vector3(x, y + h * .3, z), new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)), w]); return m; };
-  B(2.35, .1, 3.15, 0, 0, 0); B(2.15, .1, 2.95, 0, .1, 0); B(1.98, .1, 2.78, 0, .2, 0);
-  for (let k = 0; k < 6; k++) B(1.1 - k * .02, .05, .08, 0, k * .05, 1.66 - k * .07);
-  B(.95, 1.0, 2.0, 0, .3, -.15); { const s = new THREE.Shape(); s.moveTo(-.51, 0); s.lineTo(.51, 0); s.lineTo(0, .34); s.lineTo(-.51, 0); add(new THREE.ExtrudeGeometry(s, { depth: 2.0, bevelEnabled: false }).translate(0, 0, -1.0), catM, 0, 1.3, -.15, cat); }
-  B(1.0, .045, 2.04, 0, 1.26, -.15); B(1.0, .03, 2.04, 0, .95, -.15);
-  [-1, 1].forEach(sd => { B(.36, .62, 1.9, sd * .66, .3, -.15); add(new THREE.BoxGeometry(.42, .04, 1.95), catM, sd * .62, .97, -.15, cat, 0, 0, -sd * .32);
-    for (let k = 0; k < 6; k++) { const z = -1.0 + k * .34; B(.1, .55, .1, sd * .87, .3, z); add(new THREE.ConeGeometry(.075, .16, 4).rotateY(Math.PI / 4).translate(0, .08, 0), catM, sd * .87, .85, z, cat); if (k < 5) { win(.1, .22, sd * .846, .5, z + .17, sd * Math.PI / 2); win(.12, .25, sd * .477, 1.0, z + .17, sd * Math.PI / 2); } } });
-  B(1.92, .86, .56, 0, .3, -.6); B(1.98, .04, .6, 0, 1.12, -.6); [-1, 1].forEach(sd => { win(.22, .42, sd * .962, .62, -.6, sd * Math.PI / 2); const s = new THREE.Shape(); s.moveTo(-.3, 0); s.lineTo(.3, 0); s.lineTo(0, .26); s.lineTo(-.3, 0); add(new THREE.ExtrudeGeometry(s, { depth: .02, bevelEnabled: false }), catM, sd * .95, 1.16, -.6, cat, 0, sd * Math.PI / 2); });
-  Cy(.4, .42, .38, 0, 1.3, -.6, 32); add(new THREE.TorusGeometry(.43, .028, 8, 40).rotateX(Math.PI / 2), catM, 0, 1.68, -.6, cat); add(new THREE.TorusGeometry(.43, .02, 8, 40).rotateX(Math.PI / 2), catM, 0, 1.31, -.6, cat);
-  for (let k = 0; k < 12; k++) { const a = k / 12 * TAU; win(.07, .17, Math.sin(a) * .421, 1.38, -.6 + Math.cos(a) * .421, a); }
-  { const dome = new THREE.SphereGeometry(.42, 36, 18, 0, TAU, 0, Math.PI / 2); dome.scale(1, 1.15, 1); add(dome, catM, 0, 1.68, -.6, cat);
-    for (let k = 0; k < 12; k++) { const a = k / 12 * TAU, pts = []; for (let q = 0; q <= 12; q++) { const th = q / 12 * Math.PI / 2; pts.push(new THREE.Vector3(Math.sin(a) * Math.cos(th) * .43, Math.sin(th) * .485, Math.cos(a) * Math.cos(th) * .43)); }
-      add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, .016, 5), catM, 0, 1.68, -.6, cat); }
-    Cy(.075, .085, .16, 0, 2.15, -.6, 12); add(new THREE.ConeGeometry(.09, .2, 12).translate(0, .1, 0), catM, 0, 2.31, -.6, cat); for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; win(.03, .08, Math.sin(a) * .081, 2.18, -.6 + Math.cos(a) * .081, a, false); } }
-  { const ap = new THREE.CylinderGeometry(.47, .47, .9, 24, 1, false, Math.PI / 2, Math.PI).translate(0, .45, 0); add(ap, catM, 0, .3, -1.15, cat); const hd = new THREE.SphereGeometry(.47, 24, 12, Math.PI / 2, Math.PI, 0, Math.PI / 2); add(hd, catM, 0, 1.2, -1.15, cat);
-    for (let k = 0; k < 5; k++) { const a = Math.PI / 2 + (k + .5) / 5 * Math.PI; win(.1, .26, Math.sin(a) * .472, .62, -1.15 + Math.cos(a) * .472, a); } }
-  B(1.16, 1.25, .12, 0, .3, .95); win(.32, .55, 0, .3, 1.012, 0); add(new THREE.CircleGeometry(.2, 32), dark, 0, 1.13, 1.013, cat); EM.push([new THREE.Vector3(0, 1.08, 1.02), new THREE.Vector3(0, 0, 1), .3]);
-  add(new THREE.TorusGeometry(.205, .03, 8, 40), catM, 0, 1.13, 1.02, cat); add(new THREE.TorusGeometry(.065, .02, 8, 24), catM, 0, 1.13, 1.022, cat); for (let k = 0; k < 12; k++) add(new THREE.BoxGeometry(.016, .14, .02), catM, Math.sin(k / 12 * TAU) * .135, 1.13 + Math.cos(k / 12 * TAU) * .135, 1.022, cat, 0, 0, -k / 12 * TAU);
-  for (let k = 0; k < 6; k++) { const x = -.55 + k * .22; Cy(.042, .05, .72, x, .3, 1.25, 16); B(.12, .05, .12, x, 1.02, 1.25); B(.11, .04, .11, x, .3, 1.25); }
-  B(1.34, .12, .32, 0, 1.07, 1.14); B(1.38, .03, .34, 0, 1.19, 1.14); { const s = new THREE.Shape(); s.moveTo(-.69, 0); s.lineTo(.69, 0); s.lineTo(0, .3); s.lineTo(-.69, 0); add(new THREE.ExtrudeGeometry(s, { depth: .32, bevelEnabled: false }).translate(0, 0, -.16), catM, 0, 1.22, 1.14, cat); }
-  [-1, 1].forEach(sd => { const x = sd * .8, z = 1.0; B(.42, 1.05, .42, x, .3, z); win(.12, .3, x, .72, z + .212, 0); win(.12, .3, x + sd * .212, .72, z, sd * Math.PI / 2); B(.48, .05, .48, x, 1.35, z);
-    B(.36, .42, .36, x, 1.4, z); [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach(a => win(.1, .27, x + Math.sin(a) * .182, 1.47, z + Math.cos(a) * .182, a)); B(.4, .04, .4, x, 1.82, z);
-    [[.17, .19, .12], [.135, .16, .12], [.1, .125, .11], [.065, .09, .1]].reduce((y, [rt, rb, hh]) => { Cy(rt, rb, hh, x, y, z, 8); add(new THREE.TorusGeometry(rb, .012, 4, 8).rotateX(Math.PI / 2).rotateY(Math.PI / 8), catM, x, y + .005, z, cat); return y + hh; }, 1.86);
-    add(new THREE.ConeGeometry(.05, .2, 8).translate(0, .1, 0), catM, x, 2.31, z, cat); });
-  cat.rotation.y = Math.PI / 4; cat.position.set(C[0], FLOOR - 1.6, C[1]); island.add(cat);
+  const win = (w, h, x, y, z, ry = 0, emit = true) => { const m = new THREE.Mesh(archG(w, h), dark); m.position.set(x, y, z); m.rotation.y = ry; cat.add(m); if (emit) EM.push([new THREE.Vector3(x, y + h * .3, z), new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)), w]); return m; };
+  const tri = (w, h, d, x, y, z, m = catM) => { const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(0, h); s.lineTo(-w / 2, 0); return add(new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false }), m, x, y, z, cat); };
+  const halfTri = (w, h, d, x, y, z, sd) => { const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(sd * w, 0); s.lineTo(0, h); s.lineTo(0, 0); return add(new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false }), catM, x, y, z, cat); };
+  const column = (x, z, y0, H, r) => { B(r * 2.6, .05, r * 2.6, x, y0, z); Cy(r * .92, r, H - .12, x, y0 + .05, z, 14); B(r * 2.7, .07, r * 2.7, x, y0 + H - .07, z); add(new THREE.TorusGeometry(r * 1.05, r * .3, 6, 14).rotateX(Math.PI / 2), catM, x, y0 + H - .09, z, cat); };
+  const NZ = ND - .02, W = NW * 2 - .06;
+  B(W, 3.4, .06, 0, -.6, .03); // the dressed rock face at the back of the niche
+  // podium and stair
+  B(W, .26, .3, 0, -.6, NZ - .15 + .03); B(W - .2, .2, .12, 0, .06, NZ - .02);
+  for (let k = 0; k < 6; k++) B(.92, .05, .1, 0, .2 - k * .05 - .05, NZ + .08 + k * .09);
+  // lower storey: six columns, a tall portal and two side doors
+  [-.72, -.43, -.15, .15, .43, .72].forEach(x => column(x, NZ - .14, .26, 1.0, .055));
+  win(.32, .7, 0, .26, .066); add(new THREE.TorusGeometry(.16, .022, 6, 24, Math.PI), catM, 0, .26 + .7 - .16, .07, cat);
+  [-.58, .58].forEach(x => { win(.17, .44, x, .26, .066); win(.11, .2, x, .8, .066); });
+  B(W, .11, .34, 0, 1.26, .2); B(W + .04, .035, .38, 0, 1.37, .2); for (let k = 0; k < 18; k++) B(.03, .04, .03, -.82 + k * .0965, 1.22, .38);
+  tri(.98, .3, .28, 0, 1.405, .08); B(1.02, .03, .3, 0, 1.4, .22);
+  add(new THREE.CircleGeometry(.09, 28), dark, 0, 1.5, .365, cat); add(new THREE.TorusGeometry(.095, .016, 6, 28), catM, 0, 1.5, .366, cat);
+  for (let k = 0; k < 8; k++) add(new THREE.BoxGeometry(.01, .17, .015), catM, 0, 1.5, .368, cat, 0, 0, k / 8 * Math.PI);
+  EM.push([new THREE.Vector3(0, 1.5, .37), new THREE.Vector3(0, 0, 1), .12]);
+  // upper storey: a tholos between broken pediments, flanked by spired towers
+  B(.64, .06, .34, 0, 1.72, .19); Cy(.24, .24, .62, 0, 1.78, .17, 28); win(.1, .3, 0, 1.92, .413);
+  for (let k = 0; k < 5; k++) { const a = (k - 2) * .5; column(Math.sin(a) * .27, .17 + Math.cos(a) * .27, 1.78, .62, .028); }
+  add(new THREE.CylinderGeometry(.3, .3, .04, 28).translate(0, .02, 0), catM, 0, 2.4, .17, cat); add(new THREE.ConeGeometry(.27, .2, 28).translate(0, .1, 0), catM, 0, 2.44, .17, cat);
+  add(new THREE.SphereGeometry(.05, 12, 8), catM, 0, 2.68, .17, cat); Cy(.02, .03, .05, 0, 2.63, .17, 8);
+  [-1, 1].forEach(sd => { const x = sd * .52; B(.34, .62, .3, x, 1.72, .17); column(x - .1, .3, 1.72, .62, .03); column(x + .1, .3, 1.72, .62, .03); win(.09, .26, x, 1.86, .325);
+    B(.38, .05, .34, x, 2.34, .18); halfTri(.2, .14, .3, sd * .35, 2.39, .03, -sd);
+    const tx = sd * .8; B(.22, 1.72, .26, tx, .26, .16); win(.08, .3, tx, .5, .292); win(.08, .3, tx, 1.62, .292); B(.26, .04, .3, tx, 1.98, .16);
+    B(.18, .36, .22, tx, 2.02, .15); win(.06, .2, tx, 2.08, .262); add(new THREE.ConeGeometry(.1, .36, 4).rotateY(Math.PI / 4).translate(0, .18, 0), catM, tx, 2.38, .15, cat);
+    [-1, 1].forEach(q => add(new THREE.ConeGeometry(.025, .1, 4).translate(0, .05, 0), catM, tx + q * .085, 2.38, .15 + .08, cat)); });
+  // the rock left standing over the niche, cut from the jebel's own stone so it reads as one mass with the cliff
+  const rockM = new THREE.MeshStandardMaterial({ roughness: .92 }); MATS.push(rockM); { const tob = terrMat.onBeforeCompile; rockM.onBeforeCompile = sh => { tob(sh); sh.uniforms.uRev = { value: 0 }; }; rockM.customProgramCacheKey = () => 'jebelRock'; }
+  const zn1 = g => { const z = new Float32Array(g.attributes.position.count * 2); for (let i = 0; i < z.length; i += 2) z[i] = 1; g.setAttribute('zn', new THREE.BufferAttribute(z, 2)); return g; };
+  { let top = 0; for (let k = -4; k <= 4; k++) { const t = k / 4 * NW, x = J[0] + NF[0] * (D0 - ND - .08) + TN[0] * t, z = J[1] + NF[1] * (D0 - ND - .08) + TN[1] * t; top = Math.max(top, jebelH(x, z)); }
+    const y0 = 2.78, hh = Math.max(.25, top - FLOOR - y0 + .04), g = zn1(new THREE.BoxGeometry(NW * 2 + .08, hh, ND + .05, 8, 4, 2).translate(0, y0 + hh / 2, ND / 2)); { const p = g.attributes.position; for (let i = 0; i < p.count; i++) if (p.getY(i) > y0 + .01 && p.getZ(i) > ND * .6) p.setZ(i, p.getZ(i) + N.fbm(p.getX(i) * 3, p.getY(i) * 3) * .06); g.computeVertexNormals(); }
+    const lin = add(g, rockM, 0, 0, 0, cat); lin.receiveShadow = true;
+    const ar = zn1(new THREE.TorusGeometry(NW - .02, .07, 6, 24, Math.PI).translate(0, 2.0, ND - .02)); ar.scale(1, .9, 1); add(ar, catM, 0, 0, 0, cat); }
+  // colossal elephants stepping half out of the cliff on either side of the niche
+  const ellG = (rx, ry, rz) => new THREE.SphereGeometry(1, 24, 16).scale(rx, ry, rz);
+  [-1, 1].forEach(sd => { const g = new THREE.Group(); g.position.set(sd * (NW + .42), 0, ND - .08); cat.add(g);
+    add(ellG(.3, .3, .4), statM, 0, .66, -.18, g); add(ellG(.24, .25, .22), statM, 0, .9, .2, g); add(ellG(.12, .1, .1), statM, 0, 1.12, .24, g);
+    [-1, 1].forEach(q => { add(ellG(.035, .22, .18), statM, q * .2, .88, .14, g, 0, q * .35, q * .12); add(cyl(.085, .1, .52, 14), statM, q * .14, 0, .12, g); add(cyl(.11, .11, .05, 14), statM, q * .14, 0, .12, g);
+      const tk = new THREE.CatmullRomCurve3([[q * .09, .76, .32], [q * .13, .66, .48], [q * .1, .7, .62]].map(v => new THREE.Vector3(...v))); add(new THREE.TubeGeometry(tk, 10, .022, 8), statM, 0, 0, 0, g); });
+    const tr = new THREE.CatmullRomCurve3([[0, .86, .4], [0, .68, .5], [0, .38, .5], [0, .14, .54], [0, .08, .64]].map(v => new THREE.Vector3(...v))); add(new THREE.TubeGeometry(tr, 20, .05, 10), statM, 0, 0, 0, g);
+    add(new THREE.TorusGeometry(.24, .025, 6, 24, Math.PI).rotateZ(0), statM, 0, .98, .12, g); add(box(.5, .06, .3), statM, 0, 1.08, .08, g);
+    for (let k = 0; k < 5; k++) add(new THREE.SphereGeometry(.03, 8, 6), statM, (k - 2) * .09, .78 - Math.abs(k - 2) * .03, .38, g); });
+  // recumbent lions guarding the stair
+  const lion = sd => { const g = new THREE.Group(); g.position.set(sd * .64, 0, 1.12); g.rotation.y = sd * .04; cat.add(g);
+    add(box(.5, .12, 1.12).translate(0, 0, 0), statM, 0, 0, -.02, g); add(box(.54, .03, 1.16), statM, 0, .12, -.02, g);
+    add(ellG(.17, .14, .34), statM, 0, .3, -.06, g); add(ellG(.18, .16, .17), statM, 0, .3, -.34, g); add(ellG(.17, .19, .16), statM, 0, .36, .2, g);
+    add(ellG(.19, .2, .15), statM, 0, .54, .3, g); add(box(.13, .11, .14), statM, 0, .45, .4, g); add(ellG(.07, .06, .05), statM, 0, .45, .47, g);
+    add(box(.17, .05, .05), statM, 0, .57, .4, g); [-1, 1].forEach(q => { add(new THREE.ConeGeometry(.03, .06, 6), statM, q * .1, .7, .3, g); add(box(.08, .07, .34), statM, q * .1, .15, .38, g); add(ellG(.06, .12, .15), statM, q * .15, .24, -.38, g); });
+    add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[.12, .17, -.5], [.24, .16, -.32], [.26, .16, -.05], [.2, .16, .12]].map(v => new THREE.Vector3(v[0] * sd, v[1], v[2]))), 12, .022, 6), statM, 0, 0, 0, g);
+    [-.1, .1].forEach(x => add(new THREE.BoxGeometry(.035, .02, .02), dark, x * .5, .5, .47, g)); };
+  lion(-1); lion(1);
+  cat.rotation.y = Math.atan2(NF[0], NF[1]); cat.position.set(FP[0], FLOOR, FP[1]); island.add(cat); cat.updateMatrixWorld(true); ORG.value.copy(cat.position);
+  // pilgrims on the clifftop for scale
+  { const robe = ['#e8dcc8', '#3a2a22', '#7a2e22', '#2a3a5a'], ms = robe.map(c => { const m = new THREE.MeshStandardMaterial({ color: c, roughness: .9 }); MATS.push(m); return m; }), fig = mergeGeometries([new THREE.CylinderGeometry(.012, .024, .075, 6).translate(0, .0375, 0), new THREE.SphereGeometry(.013, 8, 6).translate(0, .088, 0)]);
+    [[-.5, -.18], [-.42, -.22], [.3, -.15], [.62, -.3], [.1, -.55]].forEach(([t, s2], i) => { const x = FP[0] + TN[0] * t + NF[0] * (s2 - .1), z = FP[1] + TN[1] * t + NF[1] * (s2 - .1); add(fig, ms[i % 4], x, jebelH(x, z) - .005, z).scale.setScalar(1); }); }
 
   /* the blue hole: a stair descending into the dark, a drowned face, broken columns on the ledges */
   { const g = new THREE.Group(), x0 = 4.55, z0 = 3.0; for (let k = 0; k < 14; k++) add(new THREE.BoxGeometry(.5, .12, .22), ruinM, 0, DZ(-.25 - k * .2), -k * .17, g); g.position.set(x0, WL, z0); g.rotation.y = .15; island.add(g);
@@ -191,7 +235,7 @@ export function build() {
   /* the earthquake */
   const AU = makeAudio(); AU.onStart = A => { A.wind = A.loop('bandpass', 520, .8, .04); A.pour = A.loop('bandpass', 2400, .5, 0); A.rum = A.loop('lowpass', 70, .8, 0); };
   let ev = null; const api = { ev: () => { AU.get(); ev = { t: 0, f: {}, t0: ctx.controls.target.clone(), d0: ctx.camera.position.distanceTo(ctx.controls.target) }; }, get evOn() { return !!ev; } };
-  const wv = new THREE.Vector3(), nv = new THREE.Vector3(), camT = new THREE.Vector3(), camD = new THREE.Vector3(), CATP = new THREE.Vector3(C[0], FLOOR + .9, C[1]);
+  const wv = new THREE.Vector3(), nv = new THREE.Vector3(), camT = new THREE.Vector3(), camD = new THREE.Vector3(), CATP = new THREE.Vector3(FP[0] + NF[0] * .5, FLOOR + 1.15, FP[1] + NF[1] * .5);
   ctx.steps.push(dt => { const t = ctx.clock, wind = U.uWind.value; SU.uPx.value = ctx.renderer.domElement.height / (2 * Math.tan(ctx.camera.fov * Math.PI / 360)); SU.uLit.value = .35 + .75 * U.uSun.value;
     fireL.intensity = U.uGlow.value * (2.5 + Math.sin(t * 13) * .4 + Math.sin(t * 7.3) * .3);
     { const m = new THREE.Matrix4(), q = new THREE.Quaternion(); for (let i = 0; i < 5; i++) { const u = ((t * .006 + i * .018) % 1 + 1) % 1, p = path.getPointAt(u), tg = path.getTangentAt(u), y = hR(p.x, p.z), bob = Math.abs(Math.sin(t * 3.2 + i)) * .012;
@@ -204,8 +248,6 @@ export function build() {
       if (e > .8 && !f.big) { f.big = 1; AU.burst(14, 80, .75); AU.burst(10, 300, .25, 'bandpass', .4); AU.tone(28, 22, 6, .4); ctx.flash(.18, '#ffd9a8'); }
       if (R() < dt * 4 * quake) AU.burst(.08, 2800, .12 * quake, 'highpass');
       rev = e < 1.5 ? 0 : e < 7.5 ? sm((e - 1.5) / 6) : e < 17 ? 1 : Math.max(0, 1 - sm((e - 17) / 5.5)); RU.uRev.value = rev;
-      cat.visible = rev > .001; cat.position.y = FLOOR - 1.6 * (1 - sm(Math.min(1, rev * 1.15)));
-      ORG.value.copy(cat.position);
       if (AU.ctx) { AU.rum.gain.setTargetAtTime(.5 * quake, AU.ctx.currentTime, .2); AU.pour.gain.setTargetAtTime((rev > .5 && e < 19 ? .12 : 0) + (e > 17 && e < 22 ? .1 : 0), AU.ctx.currentTime, .3); }
       // sand cascades into the court as it drains, and back over the rim as it refills
       if ((e > 1.5 && e < 8) || (e > 17 && e < 22.5)) for (let i = 0; i < Math.floor(600 * QN * dt + R()); i++) { const a = rnd(TAU), r = rnd(R0 * .9, R1 * 1.05), x = C[0] + Math.cos(a) * r, z = C[1] + Math.sin(a) * r, inn = e < 9 ? -1 : 1;
@@ -217,7 +259,7 @@ export function build() {
       // the camera moves in on the court, then pulls back as the sand returns
       { const k = sm((e - 2) / 5) * (1 - sm((e - 17.5) / 5)); camT.copy(ev.t0).lerp(CATP, k * .85); camD.copy(ctx.camera.position).sub(ctx.controls.target).setLength(ev.d0 * (1 - .45 * k)); ctx.controls.target.copy(camT); ctx.camera.position.copy(camT).add(camD); }
       if (e > 23 && !f.back) { f.back = 1; ctx.setLook(ctx.baseLook()); }
-      if (e > 25) { ev = null; RU.uRev.value = 0; cat.visible = false; if (AU.ctx) AU.rum.gain.setTargetAtTime(0, AU.ctx.currentTime, .3); } }
+      if (e > 25) { ev = null; RU.uRev.value = 0; if (AU.ctx) AU.rum.gain.setTargetAtTime(0, AU.ctx.currentTime, .3); } }
     // dust off the crests, more in a gale and a lot more in the quake
     const rate = (60 + wind * 170 + quake * 900) * QN;
     for (let i = 0; i < Math.floor(rate * dt + R()); i++) { const x = rnd(-4.9, 4.9), z = rnd(-4.9, 4.9), h = hR(x, z); if (h < WL + .05 || (R() > (h - .3) / 2.2 && R() > quake)) continue; const sp = (.35 + wind * .5) * rnd(.7, 1.3);
