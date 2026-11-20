@@ -118,14 +118,14 @@ export function initEngine(opts = {}) {
   const rt = new THREE.WebGLRenderTarget(innerWidth * PR, innerHeight * PR, { type: THREE.HalfFloatType, samples: LO ? 0 : 4 });
   const composer = new EffectComposer(renderer, rt); composer.setPixelRatio(PR); composer.setSize(innerWidth, innerHeight); composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .16, .5, 1.6); composer.addPass(bloom); composer.addPass(new OutputPass());
-  const grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) }, uStorm: { value: 0 }, uWarm: { value: 0 }, uSat: { value: 1.06 }, uFlash: { value: 0 }, uFlashC: { value: new THREE.Color(1, .95, .86) } },
+  const grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) }, uStorm: { value: 0 }, uWarm: { value: 0 }, uSat: { value: 1.06 }, uFlash: { value: 0 }, uFlashC: { value: new THREE.Color(1, .95, .86) }, uLift: { value: new THREE.Vector3() }, uGain: { value: new THREE.Vector3(1, 1, 1) } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uStorm, uWarm, uSat, uFlash; uniform vec3 uFlashC; uniform vec2 uRes; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uStorm, uWarm, uSat, uFlash; uniform vec3 uFlashC, uLift, uGain; uniform vec2 uRes; varying vec2 vUv;
       float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       void main(){ vec2 d = vUv - .5; vec3 c = texture2D(tDiffuse, vUv).rgb;
         c = mix(c, c * c * (3. - 2. * c), .26); float l = dot(c, vec3(.2126, .7152, .0722));
         c += vec3(-.012, .002, .018) * (1. - l) + vec3(.018, .008, -.014) * l; c = mix(vec3(l), c, uSat - uStorm * .25 + uWarm * .06);
-        c *= mix(vec3(1.), vec3(1.1, .98, .82), uWarm); c += vec3(.03, .012, 0.) * uWarm * (1. - l);
+        c *= mix(vec3(1.), vec3(1.1, .98, .82), uWarm); c += vec3(.03, .012, 0.) * uWarm * (1. - l); c = c * uGain + uLift * (1. - l) * (1. - l);
         c *= 1. - dot(d, d) * .55; c = mix(c, uFlashC, clamp(uFlash, 0., 1.)); c += (h(floor(vUv * uRes) + fract(uTime) * 91.) - .5) * .022; gl_FragColor = vec4(c, 1.); }` });
   composer.addPass(grade);
   let deckH = 0; const frameCam = () => { camera.aspect = innerWidth / innerHeight; const off = deckH * (innerWidth < innerHeight ? .42 : .5); if (off > 0) camera.setViewOffset(innerWidth, innerHeight, 0, off, innerWidth, innerHeight); else camera.clearViewOffset(); camera.updateProjectionMatrix(); };
@@ -162,7 +162,7 @@ export function initEngine(opts = {}) {
     LOOK = Object.assign({}, DEFAULT_LOOKS, o.looks || {}); if (o.looks && o.looks.gold) LOOK.dusk = o.looks.gold; if (o.looks && o.looks.night) LOOK.night = Object.assign({ stars: o.stars ? 1 : 0 }, o.looks.night);
     { const D = LOOK.dusk; LOOK.dawn = Object.assign({}, D, { dir: [-D.dir[0], D.dir[1] * .85, -D.dir[2]], col: '#ffb898', I: D.I * .8, warm: (D.warm || 0) * .55, exp: (D.exp || 1) * 1.04, rot: (D.rot || 0) + .5 }); }
     Object.assign(sun.shadow.camera, SHADOW0); sun.shadow.camera.updateProjectionMatrix();
-    const B = o.bloom || [.16, .5, 1.6]; bloom.strength = B[0]; bloom.radius = B[1]; bloom.threshold = B[2]; grade.uniforms.uSat.value = o.sat ?? 1.06;
+    const B = o.bloom || [.16, .5, 1.6]; bloom.strength = B[0]; bloom.radius = B[1]; bloom.threshold = B[2]; grade.uniforms.uSat.value = o.sat ?? 1.06; grade.uniforms.uLift.value.fromArray((o.grade && o.grade.lift) || [0, 0, 0]); grade.uniforms.uGain.value.fromArray((o.grade && o.grade.gain) || [1, 1, 1]);
     const C = o.cam, tT = new THREE.Vector3(C.target[0], C.target[1] + .55, C.target[2]), d = (innerWidth / innerHeight < .8 ? C.dist * 1.3 : C.dist) * .9 * (1 + deckH / innerHeight * (innerWidth < innerHeight ? .45 : .55));
     const tP = new THREE.Vector3(Math.sin(C.pol) * Math.sin(C.az) * d, Math.cos(C.pol) * d, Math.sin(C.pol) * Math.cos(C.az) * d).add(tT);
     if (!E.camInit) { E.camInit = 1; controls.target.copy(tT); camera.position.copy(tP); controls.minDistance = C.min; controls.maxDistance = C.max; E.camPlan = null; }
